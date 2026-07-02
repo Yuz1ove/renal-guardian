@@ -460,7 +460,7 @@ function CaseWalkthroughView({ workflow }: { workflow: WorkflowViewModel }) {
 
 function DeviceBlueprintView({ workflow }: { workflow: WorkflowViewModel }) {
   return (
-    <section className="console-view" aria-label="輔具設計圖">
+    <section className="console-view device-blueprint-view" aria-label="輔具設計圖">
       <ViewHeader
         view="deviceBlueprint"
         title="輔具設計圖"

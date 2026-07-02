@@ -142,6 +142,17 @@
   min-width: 0;
 }
 
+.device-blueprint-view {
+  width: min(100% - 32px, 1440px);
+  margin-inline: auto;
+}
+
+.device-blueprint-view > .console-view-header,
+.device-blueprint-view > .assistive-design-page {
+  width: 100%;
+  min-width: 0;
+}
+
 .console-view-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 0.36fr);

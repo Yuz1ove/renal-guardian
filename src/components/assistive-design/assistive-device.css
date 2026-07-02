@@ -1272,6 +1272,7 @@
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
+  overflow-x: auto;
   padding: 8px;
   border: 1px solid rgba(23, 52, 61, 0.1);
   border-radius: 8px;
@@ -1313,14 +1314,20 @@
 
 .blueprint-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
   align-items: start;
+  min-width: 0;
+}
+
+.blueprint-workspace > .blueprint-diagram-surface,
+.blueprint-workspace > .diagram-side-stack {
   min-width: 0;
 }
 
 .blueprint-diagram-surface {
   position: relative;
+  box-sizing: border-box;
   min-width: 0;
   height: clamp(520px, 45vw, 620px);
   overflow: hidden;
@@ -1332,6 +1339,19 @@
     linear-gradient(180deg, #fbfefd, #eef8f5);
   background-size: 28px 28px, 28px 28px, auto;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.74);
+}
+
+.bedside-cutaway-surface {
+  height: auto;
+  min-height: 0;
+  padding: 28px;
+}
+
+.bedside-cutaway-surface .blueprintScene {
+  position: relative;
+  width: 100%;
+  min-height: 700px;
+  overflow: hidden;
 }
 
 .blueprint-connector-lines {
@@ -1507,6 +1527,21 @@
 
 .blueprint-label.is-muted {
   opacity: 0.72;
+}
+
+.bedside-cutaway-surface .blueprint-marker {
+  transform: none;
+}
+
+.bedside-cutaway-surface .blueprint-label {
+  box-sizing: border-box;
+  align-items: start;
+  width: clamp(180px, 22%, 260px);
+  padding: 8px 10px;
+  border-radius: 8px;
+  transform: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .bracelet-cutaway-device {
@@ -1808,12 +1843,18 @@
 
 .bedside-cutaway-device {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: auto;
+  top: auto;
   z-index: 2;
-  width: clamp(500px, 58%, 660px);
+  width: clamp(360px, 42%, 500px);
   height: 390px;
-  transform: translate(-50%, -48%);
+  transform: none;
+}
+
+.bedside-cutaway-surface .deviceBody {
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
 }
 
 .bedside-cutaway-shell {
@@ -1840,7 +1881,7 @@
 
 .bedside-microphone-part {
   position: absolute;
-  left: 28%;
+  left: 21%;
   top: 34px;
   display: flex;
   align-items: center;
@@ -1849,7 +1890,7 @@
   border-radius: 999px;
   background: #ffffff;
   box-shadow: inset 0 0 0 1px rgba(23, 52, 61, 0.1);
-  transform: translateX(-50%);
+  transform: none;
 }
 
 .bedside-microphone-part i {
@@ -1866,7 +1907,7 @@
 
 .bedside-side-port {
   position: absolute;
-  right: -12px;
+  right: 0;
   top: 126px;
   width: 13px;
   height: 42px;
@@ -1876,10 +1917,11 @@
 
 .bedside-sos-button {
   position: absolute;
-  left: 50%;
+  left: calc((100% - 142px) / 2);
   top: 116px;
   z-index: 4;
   display: grid;
+  grid-template-rows: 1fr auto auto 1fr;
   place-items: center;
   width: 142px;
   height: 142px;
@@ -1892,7 +1934,7 @@
     inset 0 -16px 22px rgba(88, 18, 18, 0.3);
   cursor: pointer;
   font: inherit;
-  transform: translateX(-50%);
+  transform: none;
 }
 
 .bedside-sos-button.is-triggered {
@@ -1902,6 +1944,7 @@
 .bedside-sos-button strong {
   position: relative;
   z-index: 2;
+  grid-row: 2;
   font-size: 28px;
   letter-spacing: 0;
 }
@@ -1909,7 +1952,8 @@
 .bedside-sos-button small {
   position: relative;
   z-index: 2;
-  margin-top: -34px;
+  grid-row: 3;
+  margin-top: 0;
   font-size: 12px;
   font-weight: 950;
 }
@@ -2009,7 +2053,7 @@
 
 .bedside-speaker-part {
   position: absolute;
-  right: 24%;
+  right: 18%;
   top: 34px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr)) 26px;
@@ -2173,11 +2217,13 @@
 
 @media (max-width: 900px) {
   .blueprint-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
 
   .blueprint-tabs button {
+    flex: 0 0 auto;
     min-width: 0;
     padding-inline: 8px;
   }
@@ -2213,7 +2259,29 @@
     min-height: 380px;
   }
 
-  .blueprint-label {
+  .bedside-cutaway-surface {
+    padding: 12px;
+  }
+
+  .bedside-cutaway-surface .blueprintScene {
+    display: grid;
+    gap: 8px;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .bedside-cutaway-surface .deviceBody {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: min(100%, 560px);
+    height: auto;
+    min-height: 380px;
+    margin: 0 auto 8px;
+    transform: none;
+  }
+
+  .blueprint-diagram-surface:not(.bracelet-cutaway-surface) .blueprint-label {
     position: relative;
     left: auto !important;
     top: auto !important;
@@ -2223,9 +2291,28 @@
   }
 }
 
+@media (max-width: 760px) {
+  .bedside-cutaway-surface .blueprintScene {
+    min-height: 460px;
+  }
+
+  .bedside-cutaway-surface .deviceBody {
+    min-height: 340px;
+  }
+
+  .bedside-cutaway-surface .blueprint-label {
+    padding: 6px 8px;
+  }
+
+  .bedside-cutaway-surface .blueprint-label small,
+  .bedside-cutaway-surface .blueprint-label i {
+    display: none;
+  }
+}
+
 @media (max-width: 680px) {
   .blueprint-tabs {
-    grid-template-columns: 1fr;
+    flex-wrap: nowrap;
   }
 
   .bracelet-cutaway-device {
