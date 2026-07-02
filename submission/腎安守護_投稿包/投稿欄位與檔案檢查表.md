@@ -1,0 +1,77 @@
+# 腎安守護投稿欄位與檔案檢查表
+
+## 基本欄位
+
+- 作品名稱：腎安守護
+- 團隊名稱：腎安守護
+- 指導老師：無
+- 作品摘要：洗腎患者真正危險的時刻，不只是在透析室，而是在離開透析室後的返家與居家恢復期。本系統補上醫療照護與家庭照護之間的空白，讓患者、家屬與照護團隊能在風險發生前採取行動。
+- 學校/單位：台南市立家齊高中
+- 聯絡信箱：kuanyunimo@gmail.com
+
+## 作品核心
+
+1. 洗腎者佩戴裝置：顯示時間、心率、血壓與跌倒偵測。
+2. 床邊檢測器：確認被照顧者有正常活動狀態，必要時報警求救，也方便看護人員對話聯繫。
+3. 居服員辦公室：顯示不同被照顧者即時健康指數，低於門檻時立即派員協助。
+
+## 應上傳檔案
+
+建議優先使用英文檔名版本，避免平台或評審端解壓時出現中文檔名亂碼：
+
+- submission/renal_guardian_submission.zip
+
+若平台要求分項上傳，使用 `submission/renal_guardian_submission/` 內的下列檔案：
+
+- design_board_1.jpg
+- design_board_2.jpg
+- product_cutout.jpg
+- product_cutout_transparent.png
+- renal_guardian_three_part_system.glb
+- demo_code.zip
+- attachment_1_commitment.pdf
+- attachment_2_copyright_authorization.pdf
+- attachment_3_personal_data_consent.pdf
+
+中文檔名版本如下：
+
+- 作品設計圖檔1-腎安守護.jpg
+- 作品設計圖檔2-腎安守護.jpg
+- 作品去背圖檔-腎安守護.jpg
+- 作品去背透明圖-腎安守護.png
+- 腎安守護-三端式照護系統.glb
+- 腎安守護-示範程式碼.zip
+- 附件一 參賽單位承諾書.pdf
+- 附件二 著作授權同意書.pdf
+- 附件三 蒐集個人資料告知事項暨個人資料提供同意書.pdf
+
+## 提交前人工確認
+
+- 附件一「立同意書人簽名」欄位需親筆簽名或蓋章。
+- 附件二「授權人簽名」需親筆簽名或蓋章。
+- 附件三「立同意書人」與日期目前已填，送出前仍需目視確認清楚可讀。
+- 地址欄如出現在表單中，請確認為「台南市東區長東街108巷32號」。
+- 上傳前確認平台欄位中的信箱是 kuanyunimo@gmail.com。
+- 上傳前確認指導老師欄位填「無」或留空，依平台要求選擇。
+
+## 簽名後重打包
+
+附件一與附件二簽名並掃描成 PDF 後，使用：
+
+```bash
+npm run package:submission -- --attachment1 /path/to/signed_attachment_1.pdf --attachment2 /path/to/signed_attachment_2.pdf
+```
+
+完成後優先上傳：
+
+```text
+submission/renal_guardian_submission.zip
+```
+
+## 已驗證
+
+- 網頁示範可操作血壓、心率、活動指數與跌倒偵測。
+- 跌倒偵測會觸發「立即協助」並將健康指數降至 20。
+- 桌機與手機預覽皆無 console error。
+- 投稿圖片尺寸為 4961 x 3508。
+- 設計圖與正式去背圖皆為 300dpi JPG 且小於 5MB。

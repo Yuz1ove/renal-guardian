@@ -1,0 +1,1060 @@
+:root {
+  color: #182b33;
+  background: #edf4f2;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 65fr) minmax(360px, 35fr);
+  min-height: 100vh;
+  background: #edf4f2;
+}
+
+.scene-region {
+  min-width: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  border-right: 1px solid rgba(23, 52, 61, 0.1);
+}
+
+.three-wrap {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  min-height: 620px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.12)),
+    #dce9e6;
+}
+
+.three-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.scene-overlay {
+  position: absolute;
+  top: 28px;
+  left: clamp(22px, 4vw, 54px);
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.scene-overlay span,
+.panel-title span,
+.section-heading span {
+  display: block;
+  color: #2f756f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scene-overlay strong {
+  display: block;
+  max-width: 520px;
+  margin-top: 6px;
+  color: #102730;
+  font-size: clamp(26px, 3vw, 44px);
+  line-height: 1.08;
+}
+
+.step-cards {
+  position: absolute;
+  left: clamp(22px, 4vw, 54px);
+  right: clamp(22px, 4vw, 54px);
+  bottom: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.step-cards button,
+.demo-controls button,
+.view-tabs button,
+.inline-actions button,
+.task-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  gap: 8px;
+  border: 1px solid rgba(27, 64, 70, 0.14);
+  border-radius: 8px;
+  color: #17343d;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.step-cards button {
+  justify-content: flex-start;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.9);
+  font-weight: 800;
+  box-shadow: 0 12px 28px rgba(18, 45, 52, 0.1);
+}
+
+.step-cards span {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #2f8f86;
+  font-size: 13px;
+}
+
+.monitoring-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 100vh;
+  min-width: 0;
+  overflow: auto;
+  padding: 22px;
+  background: #fbfdfc;
+}
+
+.panel-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.panel-title h1 {
+  margin: 4px 0 0;
+  color: #102730;
+  font-size: clamp(22px, 2vw, 30px);
+  line-height: 1.18;
+}
+
+.medical-note,
+.field-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 143, 134, 0.18);
+  border-radius: 8px;
+  color: #557077;
+  background: #f0f8f6;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.view-tabs,
+.demo-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.demo-controls {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.view-tabs button,
+.demo-controls button {
+  min-width: 0;
+  padding: 9px 8px;
+  color: #33515a;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.view-tabs button.is-active,
+.demo-controls button.is-active {
+  color: #ffffff;
+  border-color: #2f8f86;
+  background: #2f8f86;
+}
+
+.demo-controls button.danger {
+  border-color: rgba(201, 75, 75, 0.34);
+}
+
+.demo-controls button.danger.is-active {
+  background: #b94545;
+  border-color: #b94545;
+}
+
+.health-summary,
+.detail-panel,
+.care-dashboard,
+.tech-panel {
+  border: 1px solid rgba(23, 52, 61, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(14, 40, 47, 0.06);
+}
+
+.health-summary {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  gap: 14px;
+  padding: 16px;
+  border-left: 6px solid #2f8f86;
+}
+
+.health-summary--attention {
+  border-left-color: #d6a441;
+}
+
+.health-summary--warning {
+  border-left-color: #df7d2e;
+}
+
+.health-summary--critical {
+  border-left-color: #c94b4b;
+}
+
+.health-summary span {
+  color: #5c757b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.health-summary strong {
+  display: block;
+  color: #102730;
+  font-size: 52px;
+  line-height: 0.95;
+}
+
+.health-summary p {
+  margin: 5px 0 0;
+  color: #526a70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #2f8f86;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.risk-badge--attention {
+  background: #c79026;
+}
+
+.risk-badge--warning {
+  background: #d56f20;
+}
+
+.risk-badge--critical {
+  background: #bf4444;
+}
+
+.detail-panel,
+.care-dashboard,
+.tech-panel {
+  padding: 14px;
+}
+
+.detail-panel h2,
+.dashboard-header strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: #17343d;
+  font-size: 17px;
+}
+
+.detail-panel.compact h2 {
+  margin-bottom: 10px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-grid div {
+  min-width: 0;
+  padding: 11px;
+  border-radius: 8px;
+  background: #f5faf8;
+}
+
+.metric-grid span {
+  display: block;
+  color: #5d7379;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metric-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: #17343d;
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.inline-actions,
+.task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.inline-actions button,
+.task-actions button {
+  padding: 9px 11px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.inline-actions button.danger {
+  color: #ffffff;
+  background: #bf4444;
+  border-color: #bf4444;
+}
+
+.device-grid {
+  display: grid;
+  gap: 9px;
+}
+
+.device-grid article {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 9px;
+  align-items: start;
+  min-width: 0;
+  padding: 9px;
+  border-radius: 8px;
+  background: #f5faf8;
+}
+
+.device-grid strong,
+.device-grid span {
+  display: block;
+}
+
+.device-grid strong {
+  color: #17343d;
+  font-size: 13px;
+}
+
+.device-grid span,
+.action-list,
+.event-timeline p,
+.dashboard-header span,
+.task-actions p,
+.tech-copy p {
+  color: #587078;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.action-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.event-timeline {
+  display: grid;
+  gap: 10px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.event-timeline li {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 10px;
+  min-width: 0;
+}
+
+.event-timeline time {
+  color: #2f756f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.timeline-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.timeline-title strong {
+  min-width: 0;
+  color: #17343d;
+  font-size: 13px;
+}
+
+.event-timeline p {
+  margin: 3px 0 0;
+}
+
+.dashboard-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.dashboard-header strong {
+  margin: 0;
+}
+
+.care-table {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.care-table-head,
+.care-row {
+  display: grid;
+  grid-template-columns: 0.75fr 0.58fr 0.45fr 0.78fr 1.5fr 0.72fr;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.care-table-head {
+  padding: 0 9px;
+  color: #6a7e84;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.care-row {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid rgba(23, 52, 61, 0.1);
+  border-radius: 8px;
+  color: #263f46;
+  background: #f7fbfa;
+  font-size: 12px;
+  text-align: left;
+}
+
+.care-row span,
+.care-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.care-row strong {
+  color: #102730;
+  font-size: 16px;
+}
+
+.task-actions {
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid rgba(23, 52, 61, 0.1);
+}
+
+.task-actions div {
+  flex: 1 1 180px;
+}
+
+.task-actions strong,
+.task-actions p {
+  display: block;
+  margin: 0;
+}
+
+.tech-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.flow-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #2f756f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flow-row span,
+.tech-copy,
+.packet-preview {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f0f8f6;
+}
+
+.tech-copy,
+.packet-preview {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: start;
+}
+
+.packet-preview pre {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  color: #17343d;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@media (max-width: 1180px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr) 390px;
+  }
+
+  .monitoring-panel {
+    padding: 18px;
+  }
+
+  .scene-overlay strong {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 920px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .scene-region,
+  .monitoring-panel {
+    min-height: auto;
+    max-height: none;
+  }
+
+  .three-wrap {
+    height: 58vh;
+    min-height: 480px;
+  }
+
+  .monitoring-panel {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 620px) {
+  .step-cards,
+  .demo-controls,
+  .view-tabs,
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .scene-overlay strong {
+    max-width: 280px;
+    font-size: 24px;
+  }
+
+  .health-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .care-table-head {
+    display: none;
+  }
+
+  .care-row {
+    grid-template-columns: 1fr 0.45fr;
+  }
+
+  .care-row span:nth-child(2),
+  .care-row span:nth-child(5) {
+    display: none;
+  }
+}
+
+.renal-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(380px, 0.78fr);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 15%, rgba(159, 228, 217, 0.28), transparent 36%),
+    linear-gradient(135deg, #e8f1ee 0%, #f8fbfa 46%, #dbe8e5 100%);
+  color: #17343d;
+}
+
+.renal-scene-panel {
+  display: grid;
+  grid-template-rows: auto minmax(460px, 1fr) auto;
+  min-width: 0;
+  min-height: 100vh;
+  padding: clamp(22px, 3vw, 44px);
+  border-right: 1px solid rgba(23, 52, 61, 0.12);
+}
+
+.renal-scene-heading,
+.renal-title,
+.renal-section-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.renal-scene-heading span,
+.renal-title span {
+  display: block;
+  color: #2f756f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.renal-scene-heading h1,
+.renal-title h2 {
+  margin: 4px 0 0;
+  color: #102730;
+  line-height: 1.12;
+}
+
+.renal-scene-heading h1 {
+  max-width: 620px;
+  font-size: clamp(30px, 4.2vw, 58px);
+}
+
+.renal-title h2 {
+  font-size: 27px;
+}
+
+.orbit-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid rgba(47, 143, 134, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #2f756f;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.renal-canvas-wrap {
+  min-width: 0;
+  min-height: 460px;
+  height: min(66vh, 660px);
+  margin: 18px 0;
+  overflow: hidden;
+  border: 1px solid rgba(23, 52, 61, 0.1);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(237, 246, 243, 0.4));
+  box-shadow: 0 24px 58px rgba(16, 39, 48, 0.09);
+}
+
+.renal-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.renal-flow-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.renal-flow-cards button,
+.renal-demo-buttons button,
+.renal-status-actions button,
+.renal-list button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid rgba(23, 52, 61, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #17343d;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.renal-flow-cards button {
+  justify-content: flex-start;
+  padding: 13px 14px;
+}
+
+.renal-flow-cards button.active {
+  border-color: rgba(47, 143, 134, 0.44);
+  box-shadow: inset 0 0 0 1px rgba(47, 143, 134, 0.16);
+}
+
+.renal-flow-cards span {
+  display: grid;
+  flex: 0 0 auto;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #2f8f86;
+  font-size: 13px;
+}
+
+.renal-control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 100vh;
+  min-width: 0;
+  overflow: auto;
+  padding: 24px;
+  background: rgba(251, 253, 252, 0.95);
+}
+
+.renal-badge,
+.renal-list em {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #2f8f86;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.renal-badge.attention,
+.renal-list em.attention {
+  background: #c79026;
+}
+
+.renal-badge.warning,
+.renal-list em.warning {
+  background: #d56f20;
+}
+
+.renal-badge.critical,
+.renal-list em.critical {
+  background: #bf4444;
+}
+
+.renal-disclaimer,
+.renal-device-copy,
+.renal-summary,
+.renal-metrics,
+.renal-list,
+.renal-events {
+  border: 1px solid rgba(23, 52, 61, 0.12);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(16, 39, 48, 0.06);
+}
+
+.renal-disclaimer {
+  margin: 0;
+  padding: 10px 12px;
+  color: #557077;
+  background: #f0f8f6;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.renal-demo-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.renal-demo-buttons button,
+.renal-status-actions button {
+  padding: 9px 8px;
+  font-size: 13px;
+  white-space: normal;
+}
+
+.renal-demo-buttons button:hover,
+.renal-status-actions button:hover,
+.renal-flow-cards button:hover,
+.renal-list button:hover {
+  border-color: rgba(47, 143, 134, 0.45);
+}
+
+.renal-demo-buttons button.danger {
+  border-color: rgba(201, 75, 75, 0.34);
+  color: #8f3030;
+}
+
+.renal-summary {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 14px;
+  padding: 15px;
+  border-left: 6px solid #2f8f86;
+}
+
+.renal-summary.attention {
+  border-left-color: #d6a441;
+}
+
+.renal-summary.warning {
+  border-left-color: #df7d2e;
+}
+
+.renal-summary.critical {
+  border-left-color: #c94b4b;
+}
+
+.renal-summary span,
+.renal-metrics span,
+.renal-section-title span {
+  color: #637a81;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.renal-summary strong {
+  display: block;
+  color: #102730;
+  font-size: 54px;
+  line-height: 0.95;
+}
+
+.renal-summary b {
+  color: #17343d;
+}
+
+.renal-summary p {
+  margin: 5px 0 0;
+  color: #526a70;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.renal-device-copy {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 11px;
+  color: #2f756f;
+}
+
+.renal-device-copy p {
+  margin: 0;
+  color: #587078;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.renal-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.renal-metrics div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f3faf8;
+}
+
+.renal-metrics strong {
+  display: block;
+  margin-top: 4px;
+  color: #17343d;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.renal-list,
+.renal-events {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+}
+
+.renal-section-title strong {
+  color: #17343d;
+  font-size: 15px;
+}
+
+.renal-list button {
+  display: grid;
+  grid-template-columns: 0.75fr 0.58fr 0.35fr 0.75fr;
+  justify-content: stretch;
+  width: 100%;
+  padding: 8px 9px;
+  background: #f7fbfa;
+  text-align: left;
+}
+
+.renal-list button.selected {
+  border-color: rgba(47, 143, 134, 0.45);
+  background: #eef7f4;
+}
+
+.renal-list button span,
+.renal-list button strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.renal-list button strong {
+  color: #102730;
+  font-size: 17px;
+}
+
+.renal-status-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.renal-events {
+  max-height: 245px;
+  overflow: auto;
+}
+
+.renal-events article {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 9px;
+  align-items: start;
+  padding: 8px;
+  border-radius: 8px;
+  background: #f7fbfa;
+}
+
+.renal-events time {
+  color: #2f756f;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.renal-events p {
+  margin: 0;
+  color: #344f57;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.renal-events article > span {
+  color: #607077;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+@media (max-width: 1120px) {
+  .renal-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .renal-scene-panel {
+    min-height: auto;
+  }
+
+  .renal-control-panel {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 620px) {
+  .renal-scene-panel,
+  .renal-control-panel {
+    padding: 16px;
+  }
+
+  .renal-scene-heading,
+  .renal-title {
+    display: grid;
+  }
+
+  .renal-canvas-wrap {
+    height: 420px;
+    min-height: 420px;
+  }
+
+  .renal-flow-cards,
+  .renal-demo-buttons,
+  .renal-status-actions,
+  .renal-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .renal-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .renal-list button {
+    grid-template-columns: 1fr 0.55fr;
+  }
+
+  .renal-list button span:nth-child(2),
+  .renal-list button em {
+    display: none;
+  }
+
+  .renal-events article {
+    grid-template-columns: 1fr;
+  }
+}

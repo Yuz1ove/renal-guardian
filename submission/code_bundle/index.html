@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f8f86'/%3E%3Cpath d='M18 34c10-18 18-18 28 0-10 18-18 18-28 0Z' fill='%23f8fbfa'/%3E%3Ccircle cx='32' cy='34' r='7' fill='%23c95b56'/%3E%3C/svg%3E" />
+    <title>腎安守護 | 3D Design Prototype</title>
+  </head>
+  <body>
+    <main id="app">
+      <section class="stage-shell">
+        <div class="model-stage" id="modelStage">
+          <canvas id="renalCanvas" aria-label="腎安守護 3D 模型"></canvas>
+          <div class="model-caption">
+            <span>Renal Guardian</span>
+            <strong>透析後返家風險守護系統</strong>
+          </div>
+        </div>
+        <aside class="control-panel">
+          <div class="identity">
+            <p>作品名稱</p>
+            <h1>腎安守護</h1>
+          </div>
+          <div class="metrics">
+            <label>
+              收縮壓
+              <input id="bpInput" type="range" min="80" max="190" value="112" />
+              <output id="bpValue">112 mmHg</output>
+            </label>
+            <label>
+              心率
+              <input id="hrInput" type="range" min="45" max="135" value="92" />
+              <output id="hrValue">92 bpm</output>
+            </label>
+            <label>
+              活動指數
+              <input id="activityInput" type="range" min="0" max="100" value="78" />
+              <output id="activityValue">78 / 100</output>
+            </label>
+            <label>
+              跌倒偵測
+              <input id="fallInput" type="range" min="0" max="1" value="0" />
+              <output id="fallValue">未偵測</output>
+            </label>
+          </div>
+          <div class="risk-card" id="riskCard">
+            <p>健康指數</p>
+            <strong id="riskLabel">穩定</strong>
+            <span id="riskScore">81</span>
+          </div>
+          <p class="risk-copy" id="riskCopy">
+            目前健康指數穩定，穿戴裝置、床邊檢測器與辦公室看板持續同步。
+          </p>
+          <section class="office-panel" aria-label="居服員辦公室即時看板">
+            <div class="panel-heading">
+              <p>居服員辦公室</p>
+              <strong>即時健康指數</strong>
+            </div>
+            <div class="patient-list">
+              <article class="patient-row current" id="patientCurrent">
+                <span>侯冠宇</span>
+                <meter id="patientCurrentMeter" min="0" max="100" value="81"></meter>
+                <strong id="patientCurrentScore">81</strong>
+              </article>
+              <article class="patient-row">
+                <span>林阿姨</span>
+                <meter min="0" max="100" value="74"></meter>
+                <strong>74</strong>
+              </article>
+              <article class="patient-row alert">
+                <span>陳伯伯</span>
+                <meter min="0" max="100" value="36"></meter>
+                <strong>36</strong>
+              </article>
+            </div>
+            <p class="dispatch-note" id="dispatchNote">低於 40 會標示派員；跌倒偵測會立即開啟求救與通話。</p>
+          </section>
+        </aside>
+      </section>
+
+      <section class="poster poster-one" id="posterOne">
+        <div class="poster-hero">
+          <div>
+            <p class="kicker">2026 ICARE Universal Design</p>
+            <h2>腎安守護</h2>
+            <p>
+              洗腎患者真正危險的時刻，不只是在透析室，而是在離開透析室後的返家與居家恢復期。
+            </p>
+          </div>
+          <div class="poster-model" id="posterModelOne"></div>
+        </div>
+        <div class="poster-grid">
+          <article>
+            <h3>照護斷點</h3>
+            <p>透析結束後常出現低血壓、心率異常、活動量下降與跌倒風險，但家庭與辦公室端缺少連續資訊。</p>
+          </article>
+          <article>
+            <h3>核心設計</h3>
+            <p>洗腎者佩戴裝置、床邊檢測器與居服員辦公室看板，將被照顧者狀態轉為可行動的即時健康指數。</p>
+          </article>
+          <article>
+            <h3>預警流程</h3>
+            <p>生命徵象、活動狀態與跌倒偵測轉換為健康指數，低於門檻時辦公室看板立即派員協助。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="poster poster-two" id="posterTwo">
+        <div class="poster-two-layout">
+          <div class="diagram">
+            <div>佩戴監測</div>
+            <div>床邊確認</div>
+            <div>對話聯繫</div>
+            <div>派員協助</div>
+          </div>
+          <div class="specs">
+            <p class="kicker">Product System</p>
+            <h2>三端式照護系統</h2>
+            <ul>
+              <li>洗腎者佩戴裝置：顯示時間、心率、血壓與跌倒偵測。</li>
+              <li>床邊檢測器：追蹤活動狀態，必要時報警求救並支援對話。</li>
+              <li>居服員辦公室：多位被照顧者即時健康指數低於門檻時派員協助。</li>
+            </ul>
+          </div>
+          <div class="code-card">
+            <h3>基礎風險程式</h3>
+            <pre><code>health = 100 - (bpRisk + heartRisk + activityRisk + fallRisk)
+if (health &lt;= 40) dispatchCareWorker()
+if (fallDetected) alarmAndOpenCall()</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="cutout" id="cutout">
+        <div id="cutoutModel"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

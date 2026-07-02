@@ -1,0 +1,36 @@
+{
+  "name": "renal-guardian-design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "export:glb": "node scripts/export-glb.mjs",
+    "validate:glb": "node scripts/validate-glb.mjs",
+    "validate:demo": "tsx scripts/validate-demo-logic.ts",
+    "validate:runtime": "playwright test --config=playwright.runtime.config.mjs",
+    "package:submission": "node scripts/package-submission.mjs",
+    "validate:submission": "node scripts/validate-submission.mjs",
+    "signing:guides": "python3 tools/create_signing_guide.py",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "lucide-react": "^1.22.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "three": "^0.179.1",
+    "typescript": "^6.0.3",
+    "vite": "^7.0.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "tsx": "^4.22.4"
+  }
+}

@@ -1,0 +1,46 @@
+After signing attachment 1 and attachment 2
+
+Signing position guide:
+- submission/signing_packet/
+- submission/signing_packet.zip
+- submission/signing_aid/attachment_1_signature_guide.png
+- submission/signing_aid/attachment_1_signature_guide.pdf
+- submission/signing_aid/attachment_2_signature_guide.png
+- submission/signing_aid/attachment_2_signature_guide.pdf
+- submission/signing_aid/attachment_3_signature_date_guide.png
+- submission/signing_aid/attachment_3_signature_date_guide.pdf
+
+1. Scan or export the signed attachment 1 and attachment 2 forms as PDFs.
+   Attachment 3 currently includes signature and date; visually confirm it is clear, or rescan it if needed.
+2. Rebuild the submission package:
+
+   npm run package:submission -- --attachment1 /path/to/signed_attachment_1.pdf --attachment2 /path/to/signed_attachment_2.pdf
+
+   If attachment 3 is rescanned, add:
+
+   --attachment3 /path/to/signed_attachment_3.pdf
+
+3. Upload this package first:
+
+   submission/renal_guardian_submission.zip
+
+4. Validate again:
+
+   npm run validate:submission
+
+The validator compares attachment 1 and attachment 2 against known unsigned baselines.
+After replacing them with signed PDFs, the unsigned-baseline warnings should disappear.
+Still visually confirm all handwritten signatures/stamps and the attachment 3 date before upload.
+
+If you only want to rebuild with the current attachment files:
+
+   npm run package:submission
+
+The script rebuilds:
+- submission/renal_guardian_submission.zip
+- submission/腎安守護_投稿包.zip
+- submission/platform_upload_files.zip
+- submission/signing_packet.zip
+
+Reminder:
+Attachment 1 and attachment 2 must be handwritten-signed or stamped before final upload.

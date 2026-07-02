@@ -1,0 +1,19 @@
+*.md text whitespace=-blank-at-eol
+*.txt text
+*.js text
+*.jsx text
+*.ts text
+*.tsx text
+*.css text
+*.html text
+*.json text
+*.mjs text
+*.py text
+*.ino text
+
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.pdf binary
+*.zip binary
+*.glb binary

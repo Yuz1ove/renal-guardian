@@ -1,0 +1,40 @@
+Renal Guardian / 腎安守護 - ASCII filename submission package
+
+Recommended platform field values:
+- Work title: 腎安守護
+- Team name: 腎安守護
+- Advisor: 無
+- School: 台南市立家齊高中
+- Email: kuanyunimo@gmail.com
+- Address: 台南市東區長東街108巷32號
+
+Files in renal_guardian_submission:
+- design_board_1.jpg: A3 horizontal design board 1
+- design_board_2.jpg: A3 horizontal design board 2
+- product_cutout.jpg: 300dpi JPG product cutout for formal upload
+- product_cutout_transparent.png: transparent product image supplement
+- renal_guardian_three_part_system.glb: 3D model file
+- demo_code.zip: Vite / Three.js web demo plus Arduino firmware prototype
+- attachment_1_commitment.pdf: team commitment form
+- attachment_2_copyright_authorization.pdf: copyright authorization form
+- attachment_3_personal_data_consent.pdf: personal data consent form
+- platform_field_values_zh.txt: copy-paste values for the submission form
+- submission_checklist_zh.md: checklist and manual reminders
+- renal_guardian_brief.pdf: two-page product and technical summary
+- requirements_traceability_zh.md: requirement-to-evidence checklist
+- completion_audit_zh.md: final completion audit and manual-signature reminder
+- competition_requirements_zh.md: contest rules and file-spec audit
+- platform_upload_guide_zh.md: exact platform field and upload file guide
+- runtime_verification_zh.md: build, packaging, and browser interaction verification
+- glb_model_audit_zh.md: GLB node and structure verification record
+- demo_logic_audit_zh.md: risk logic and dispatch scenario verification
+- final_review_matrix_zh.md: final contest/user-requirement review matrix
+- form_copy_variants_zh.txt: short and long form copy variants
+- checksums_sha256.txt: SHA-256 checksum list for major submission files
+
+Manual blocker before final upload:
+- Attachment 1 appears to still need the handwritten signature/seal field completed.
+
+Packaging note:
+- renal_guardian_submission.zip uses ASCII filenames.
+- demo_code.zip also uses ASCII filenames internally.

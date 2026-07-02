@@ -1,0 +1,381 @@
+:root {
+  color: #1d2630;
+  background: #eef3f1;
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", Arial, sans-serif;
+  font-synthesis: none;
+  letter-spacing: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+body.export-mode {
+  width: 100vw;
+  min-width: 100vw;
+  min-height: 100vh;
+  overflow: hidden;
+  background: transparent;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.stage-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 100vh;
+  background:
+    linear-gradient(120deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0)),
+    #dfeae6;
+}
+
+.model-stage {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+#renalCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.poster-model canvas,
+#cutoutModel canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.model-caption {
+  position: absolute;
+  left: clamp(24px, 5vw, 72px);
+  bottom: clamp(24px, 5vw, 64px);
+  max-width: 640px;
+}
+
+.model-caption span,
+.kicker,
+.identity p,
+.risk-card p,
+.panel-heading p {
+  display: block;
+  margin: 0 0 8px;
+  color: #3b7b78;
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.model-caption strong {
+  display: block;
+  color: #16222a;
+  font-size: clamp(32px, 5vw, 72px);
+  line-height: 1.04;
+}
+
+.control-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 100vh;
+  padding: 32px;
+  background: #f9fbfa;
+  border-left: 1px solid rgba(23, 47, 56, 0.14);
+}
+
+.identity h1 {
+  margin: 0;
+  font-size: 38px;
+}
+
+.metrics {
+  display: grid;
+  gap: 18px;
+}
+
+.metrics label {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 43, 53, 0.12);
+  border-radius: 8px;
+  color: #24323b;
+  font-weight: 700;
+}
+
+.metrics input[type="range"] {
+  accent-color: #2f8f86;
+}
+
+.metrics output {
+  color: #60707b;
+  font-size: 14px;
+}
+
+.risk-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+  gap: 8px;
+  padding: 18px;
+  background: #16323a;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.risk-card p {
+  grid-column: 1 / -1;
+  color: #9fe4d9;
+}
+
+.risk-card strong {
+  font-size: 28px;
+}
+
+.risk-card span {
+  font-size: 48px;
+  font-weight: 900;
+}
+
+.risk-card.stable {
+  background: #1f5f5a;
+}
+
+.risk-card.watch {
+  background: #175172;
+}
+
+.risk-card.warning {
+  background: #80621f;
+}
+
+.risk-card.critical {
+  background: #8f3030;
+}
+
+.risk-copy {
+  margin: 0;
+  color: #44535d;
+  line-height: 1.7;
+}
+
+.office-panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(24, 43, 53, 0.12);
+  border-radius: 8px;
+}
+
+.panel-heading p {
+  margin-bottom: 4px;
+}
+
+.panel-heading strong {
+  display: block;
+  color: #1d2630;
+  font-size: 20px;
+}
+
+.patient-list {
+  display: grid;
+  gap: 10px;
+}
+
+.patient-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  color: #34434d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.patient-row meter {
+  width: 100%;
+  height: 12px;
+}
+
+.patient-row strong {
+  color: #1d2630;
+  text-align: right;
+}
+
+.patient-row.alert strong {
+  color: #9e3535;
+}
+
+.dispatch-note {
+  margin: 0;
+  color: #60707b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.poster,
+.cutout {
+  position: relative;
+  display: none;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f6f8f7;
+}
+
+.poster {
+  padding: 4.25vw;
+}
+
+.poster.export,
+.cutout.export {
+  display: block;
+}
+
+.poster-hero {
+  display: grid;
+  grid-template-columns: 1fr 1.05fr;
+  gap: 2.4vw;
+  align-items: center;
+  height: 51.3vh;
+}
+
+.poster h2 {
+  margin: 0 0 1vw;
+  color: #182932;
+  font-size: 5.45vw;
+  line-height: 0.95;
+}
+
+.poster p,
+.poster li {
+  color: #394953;
+  font-size: 1.17vw;
+  line-height: 1.45;
+}
+
+.poster-model {
+  width: 100%;
+  height: 43.9vh;
+  background: #e2ece8;
+  border: 1px solid rgba(32, 67, 74, 0.14);
+  border-radius: 8px;
+}
+
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.13vw;
+}
+
+.poster-grid article,
+.code-card {
+  min-height: 21.6vh;
+  padding: 1.45vw;
+  background: #ffffff;
+  border: 1px solid rgba(32, 67, 74, 0.14);
+  border-radius: 8px;
+}
+
+.poster h3 {
+  margin: 0 0 0.65vw;
+  color: #1f6f69;
+  font-size: 1.94vw;
+}
+
+.poster-two-layout {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  grid-template-rows: 1fr auto;
+  gap: 1.45vw;
+  height: 100%;
+}
+
+.diagram {
+  display: grid;
+  gap: 1.25vh;
+  align-content: center;
+}
+
+.diagram div {
+  padding: 2.22vh 1.94vw;
+  background: #18313a;
+  border-left: 0.52vw solid #e0b84c;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1.82vw;
+  font-weight: 900;
+}
+
+.specs {
+  padding: 1.82vw;
+  background: #e3eee9;
+  border-radius: 8px;
+}
+
+.specs ul {
+  display: grid;
+  gap: 0.7vw;
+  padding-left: 1.2em;
+}
+
+.code-card {
+  grid-column: 1 / -1;
+  min-height: auto;
+  background: #111e24;
+}
+
+.code-card h3 {
+  color: #9fe4d9;
+}
+
+.code-card pre {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25vw;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.cutout {
+  background: transparent;
+}
+
+#cutoutModel {
+  width: 100%;
+  height: 100%;
+}
+
+@media (max-width: 860px) {
+  .stage-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .model-stage {
+    min-height: 58vh;
+  }
+
+  .control-panel {
+    min-height: auto;
+    border-left: 0;
+    border-top: 1px solid rgba(23, 47, 56, 0.14);
+  }
+}

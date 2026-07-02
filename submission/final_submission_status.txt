@@ -1,0 +1,79 @@
+Final submission status for Renal Guardian / 腎安守護
+
+Ready files:
+- submission/renal_guardian_submission.zip
+- submission/platform_upload_files/
+- submission/platform_upload_files.zip
+- submission/signing_packet/
+- submission/signing_packet.zip
+- submission/renal_guardian_submission/design_board_1.jpg
+- submission/renal_guardian_submission/design_board_2.jpg
+- submission/renal_guardian_submission/product_cutout.jpg
+- submission/renal_guardian_submission/product_cutout_transparent.png
+- submission/renal_guardian_submission/renal_guardian_three_part_system.glb
+- submission/renal_guardian_submission/demo_code.zip
+- submission/renal_guardian_submission/judging_copy_zh.txt
+- submission/renal_guardian_submission/technical_specification_zh.md
+- submission/renal_guardian_submission/renal_guardian_brief.pdf
+- submission/renal_guardian_submission/requirements_traceability_zh.md
+- submission/renal_guardian_submission/completion_audit_zh.md
+- submission/renal_guardian_submission/competition_requirements_zh.md
+- submission/renal_guardian_submission/platform_upload_guide_zh.md
+- submission/renal_guardian_submission/runtime_verification_zh.md
+- submission/renal_guardian_submission/glb_model_audit_zh.md
+- submission/renal_guardian_submission/demo_logic_audit_zh.md
+- submission/renal_guardian_submission/final_review_matrix_zh.md
+- submission/renal_guardian_submission/form_copy_variants_zh.txt
+- submission/renal_guardian_submission/checksums_sha256.txt
+
+Verified:
+- design_board_1.jpg: 4961 x 3508
+- design_board_2.jpg: 4961 x 3508
+- product_cutout.jpg: 4961 x 3508, 300dpi JPG, under 5MB
+- product_cutout_transparent.png: 4961 x 3508 supplemental transparent PNG
+- npm run build: passed
+- npm run validate:runtime: passed
+- npm run package:submission: passed
+- npm run validate:submission: passed with unsigned-attachment baseline warnings for attachment 1 and attachment 2
+- submission/platform_upload_files contains the six platform-required upload files in upload order
+- submission/platform_upload_files.zip is generated and validated
+- submission/signing_packet contains attachment 1, attachment 2, attachment 3 review copy, signature-position guides, and signing instructions
+- submission/signing_packet.zip is generated and validated
+- demo_code.zip uses ASCII filenames internally
+- renal_guardian_submission.zip uses ASCII filenames
+- judging_copy_zh.txt and technical_specification_zh.md are included for form writing and technical review
+- renal_guardian_brief.pdf is included as a two-page product and technical summary
+- requirements_traceability_zh.md maps the original three device requirements to implementation evidence
+- completion_audit_zh.md confirms final completion status and remaining manual signature items
+- competition_requirements_zh.md maps the official contest requirements, review weights, and upload file specs
+- platform_upload_guide_zh.md maps each platform field and upload slot to the exact file/value
+- runtime_verification_zh.md records build, package validation, and Playwright interaction checks
+- glb_model_audit_zh.md records GLB required nodes and structure validation
+- demo_logic_audit_zh.md records stable, watch, dispatch, critical, and fall-detected logic scenarios
+- final_review_matrix_zh.md summarizes contest specs, user requirements, review criteria, evidence, and remaining manual steps
+- form_copy_variants_zh.txt provides 50, 100, 200, and 500 character form copy variants
+- checksums_sha256.txt lists SHA-256 hashes for major submission files
+
+Remaining manual steps:
+- Sign or stamp attachment_1_commitment.pdf by hand.
+- Sign or stamp attachment_2_copyright_authorization.pdf by hand.
+- Visually confirm attachment_3_personal_data_consent.pdf signature and date are clear.
+- Use submission/signing_packet/ if you need marked signing positions.
+- After signing, rebuild the package:
+
+  npm run package:submission -- --attachment1 /path/to/signed_attachment_1.pdf --attachment2 /path/to/signed_attachment_2.pdf
+
+Then validate:
+
+  npm run validate:submission
+
+The validator compares attachment_1_commitment.pdf and attachment_2_copyright_authorization.pdf with known unsigned baselines.
+After signed replacements are packaged, the unsigned-baseline warnings should disappear, but all visible signatures/stamps should still be checked manually.
+
+Upload priority:
+1. submission/renal_guardian_submission.zip
+2. If platform asks for separate uploads, use files inside submission/renal_guardian_submission/
+
+Copy-paste form values:
+- submission/platform_field_values_zh.txt
+- submission/renal_guardian_submission/platform_field_values_zh.txt
