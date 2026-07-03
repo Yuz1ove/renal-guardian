@@ -3,6 +3,7 @@ import {
   Cpu,
   LayoutDashboard,
   MapPin,
+  PhoneCall,
   Server,
   Smartphone,
   UserRound,
@@ -30,12 +31,16 @@ const flowNodes: FlowNodeMeta[] = [
   { id: "backend", label: "後端 API", detail: "事件與封包 ingest", icon: Server },
   { id: "riskEngine", label: "Risk Engine", detail: "規則加權與分級", icon: Cpu },
   { id: "dashboard", label: "照護端 Dashboard", detail: "警報卡與隊列", icon: LayoutDashboard },
-  { id: "notification", label: "通知醫護", detail: "家屬 / 居服員 / 醫護", icon: BellRing },
+  { id: "notification", label: "通知 / 119 升級", detail: "家屬 / 居服員 / 急救條件", icon: BellRing },
   { id: "arrival", label: "到達現場", detail: "處置與解除", icon: MapPin }
 ];
 
 function classNames(...tokens: Array<string | false | undefined>) {
   return tokens.filter(Boolean).join(" ");
+}
+
+function isEmergencyEscalationActive(step: CaseStep) {
+  return step.risk.level === "critical" && step.careFlow.eventStatus === "active";
 }
 
 export function AnimatedFlowMap({
@@ -47,8 +52,17 @@ export function AnimatedFlowMap({
   showPackets: boolean;
   isPlaying: boolean;
 }) {
+  const emergencyEscalationActive = isEmergencyEscalationActive(step);
+
   return (
-    <section className={classNames("animated-flow-map", `risk-${step.risk.level}`)} aria-label="Animated Flow Map">
+    <section
+      className={classNames(
+        "animated-flow-map",
+        `risk-${step.risk.level}`,
+        emergencyEscalationActive && "has-emergency-escalation"
+      )}
+      aria-label="Animated Flow Map"
+    >
       <header className="case-panel-heading">
         <div>
           <span>Animated Flow Map</span>
@@ -86,6 +100,17 @@ export function AnimatedFlowMap({
             </div>
           );
         })}
+
+        {emergencyEscalationActive ? (
+          <div className="emergency-escalation-track" aria-label="119 emergency escalation path">
+            <span className="escalation-line" aria-hidden="true" />
+            <strong>
+              <PhoneCall size={14} />
+              119 升級條件成立
+            </strong>
+            <p>Critical + 求助鍵 / 未回應安全確認時，通知線改為緊急處置線，直到人員到場與事件解除。</p>
+          </div>
+        ) : null}
       </div>
 
       <div className="flow-map-status-strip">
