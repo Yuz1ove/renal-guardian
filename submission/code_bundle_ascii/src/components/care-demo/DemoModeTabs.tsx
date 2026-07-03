@@ -18,7 +18,7 @@ export function DemoModeTabs({
   const modes: DemoMode[] = ["overview", "wearable", "bedside", "team"];
 
   return (
-    <nav className="demo-mode-tabs" aria-label="展示模式">
+    <nav className="demo-mode-tabs" aria-label="流程視角">
       {modes.map((item) => {
         const Icon = iconByMode[item];
         const preset = scenePresets[item];

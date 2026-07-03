@@ -1,4 +1,5 @@
 export type OperationRiskLevel = "stable" | "watch" | "warning" | "critical";
+export type PatientSeverity = "Critical" | "Warning" | "Watch" | "Stable";
 
 export type AlertStatus =
   | "pending"
@@ -18,19 +19,74 @@ export type DeliveryStatus = "pending" | "sent" | "retrying" | "acknowledged" | 
 export type AcknowledgementStatus = "idle" | "pending" | "sent" | "acknowledged" | "failed" | "retrying";
 export type ConnectionPath = "BLE -> phone relay" | "Wi-Fi" | "LTE fallback" | "buffered offline";
 export type CareDemoState =
-  | "idle"
-  | "monitoring"
-  | "anomalyDetected"
-  | "bedsideHelpPressed"
-  | "alertQueued"
-  | "caregiverReviewing"
-  | "patientAckWaiting"
-  | "patientAcknowledged"
-  | "escalationPending"
-  | "familyNotified"
-  | "homeCareWorkerDispatched"
+  | "normalMonitoring"
+  | "riskDetected"
+  | "confirmPatient"
+  | "notifyCareWorker"
   | "emergencyEscalated"
+  | "waitingResponder"
+  | "responderArrived"
   | "resolved";
+
+export type EmergencyFlowStatus = "pending" | "active" | "sent" | "retrying" | "confirmed" | "failed" | "resolved";
+export type CaseActionStatus =
+  | "idle"
+  | "calling"
+  | "no_answer"
+  | "connected"
+  | "sent"
+  | "retrying"
+  | "confirmed"
+  | "departed"
+  | "arrived"
+  | "resolved"
+  | "timeout";
+
+export type WorkerDispatchStatus = "idle" | "assigned" | "departed" | "arrived";
+
+export interface EmergencyFlowNode {
+  id:
+    | "criticalDetected"
+    | "priorityPacket"
+    | "consoleAck"
+    | "familyNotify"
+    | "emergency119"
+    | "responderDispatch"
+    | "caseWriteback";
+  label: string;
+  detail: string;
+  status: EmergencyFlowStatus;
+  meta: Array<{ label: string; value: string }>;
+}
+
+export interface WorkerDispatchState {
+  status: WorkerDispatchStatus;
+  workerId?: string;
+  assignedAt?: string;
+  departedAt?: string;
+  arrivedAt?: string;
+  distanceKm?: number;
+  etaMinutes?: number;
+}
+
+export interface CaseActionStatuses {
+  callPatient: CaseActionStatus;
+  patientCheckPrompt: CaseActionStatus;
+  notifyFamily: CaseActionStatus;
+  workerDispatch: CaseActionStatus;
+  emergencyEscalation: CaseActionStatus;
+  timeout: CaseActionStatus;
+}
+
+export interface CaseWorkflowRuntime {
+  state: CareDemoState;
+  escalationFlowVisible: boolean;
+  escalationFlow: EmergencyFlowNode[];
+  assignedWorkerId?: string;
+  workerDispatch: WorkerDispatchState;
+  actionStatuses: CaseActionStatuses;
+  eventLog: AuditLogEntry[];
+}
 
 export type CareWorkflowAction =
   | "assignCareWorker"
@@ -65,6 +121,44 @@ export interface PatientStatus {
   powerSource: "battery" | "plugged" | "backup_battery";
   familyNotified: boolean;
   careWorkerDispatched: boolean;
+}
+
+export interface Patient {
+  id: string;
+  name: string;
+  room: string;
+  severity: PatientSeverity;
+  riskScore: number;
+  hr: number;
+  spo2: number;
+  motionState: string;
+  activityDropPercent: number;
+  signalQuality: "good" | "weak" | "offline";
+  connectionPath: string;
+  workflowState: string;
+  lastSyncTime: string;
+  helpEvent?: {
+    active: boolean;
+    source?: "bracelet" | "bedside_button" | "system_prediction";
+    createdAt?: string;
+  };
+  packet?: {
+    id: string;
+    delaySeconds: number;
+    bufferedCount: number;
+    payloadSizeKb: number;
+    acknowledgementStatus: string;
+  };
+  location?: {
+    label: string;
+    confidence: number;
+    source: "GPS" | "indoor" | "hybrid";
+  };
+  riskBreakdown: {
+    label: string;
+    points: number;
+    description: string;
+  }[];
 }
 
 export interface OperationsHelpEvent {
@@ -123,6 +217,7 @@ export interface AlertCase {
   timeline: AuditLogEntry[];
   slaSecondsRemaining: number;
   workflowState: CareDemoState;
+  workflow: CaseWorkflowRuntime;
   lowDataPacket?: WeakNetworkPacket;
 }
 

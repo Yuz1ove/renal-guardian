@@ -73,47 +73,64 @@ test("renal guardian interactive risk flow", async ({ page }) => {
   await expect(page).toHaveTitle("腎安｜洗腎返家恢復期風險監測");
   await expect(page.getByRole("heading", { name: "腎安" })).toBeVisible();
   await expect(page.getByText("洗腎返家恢復期照護協作系統").first()).toBeVisible();
-  await expect(page.getByText("不作為醫療診斷")).toBeVisible();
+  await expect(page.getByText("不作為診斷、治療或緊急醫療決策依據")).toBeVisible();
+  await expect(page.getByRole("region", { name: "系統總覽" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "照護端風險隊列" })).toContainText("A-203");
 
-  const canvas = page.locator(".care-scene-frame canvas");
-  await expect(canvas).toBeVisible();
+  const consoleNav = page.getByRole("navigation", { name: "Demo Console 導覽" });
+  await consoleNav.getByRole("button", { name: "串聯流程" }).click();
+  const stage = page.locator(".care-process-canvas");
+  await expect(stage).toBeVisible();
   await expect
     .poll(async () =>
-      canvas.evaluate((node) => {
+      stage.evaluate((node) => {
         const rect = node.getBoundingClientRect();
         return Math.round(rect.width * rect.height);
       })
     )
     .toBeGreaterThan(200000);
+  await expect(stage.getByText("Patient Signals").first()).toBeVisible();
+  await expect(stage.getByText("Telemetry / event packet").first()).toBeVisible();
+  await expect(stage.getByText("Risk engine pipeline").first()).toBeVisible();
+  await expect(stage.getByText("Care Coordination").first()).toBeVisible();
+  await expect(stage.getByText("Feedback").first()).toBeVisible();
 
   await expect(page.getByText("A-203").first()).toBeVisible();
   await expect(page.getByText("A-118").first()).toBeVisible();
   await expect(page.getByText("A-076").first()).toBeVisible();
   await expect(page.getByText("100").first()).toBeVisible();
-  await expect(page.getByText("Critical｜立即關注").first()).toBeVisible();
-  await expect(page.getByText("最終分數上限封頂為 100").first()).toBeVisible();
+  await expect(page.getByText("Critical｜已分派照護人員").first()).toBeVisible();
+  await expect(page.getByText("caregiver update").first()).toBeVisible();
 
-  await page.getByLabel("三端模組 3D 展示").getByRole("button", { name: "手環監測" }).click();
-  await expect(page.getByText("手環低資料量監測")).toBeVisible();
+  const modeTabs = page.getByRole("navigation", { name: "流程視角" });
+  await modeTabs.getByRole("button", { name: "手環監測" }).click();
+  await expect(stage).toHaveClass(/mode-wearable/);
+  await expect(page.getByText("手環低資料量監測").first()).toBeVisible();
   await expect(page.getByText("0.8 KB").first()).toBeVisible();
-  await expect(page.getByText("device packet → API").first()).toBeVisible();
+  await expect(page.getByText(/"patientId": "A-203"/).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "手環資料" }).click();
-  await expect(page.getByText("已接收 A-203 手環封包").first()).toBeVisible();
+  await modeTabs.getByRole("button", { name: "床邊求助" }).click();
+  await expect(stage).toHaveClass(/mode-bedside/);
+  await expect(page.getByText("床邊求助事件").first()).toBeVisible();
+  await expect(page.getByText(/"source": "wristband"/).first()).toBeVisible();
+  await expect(page.getByText(/"priority": "urgent"/).first()).toBeVisible();
 
-  await page.getByLabel("三端模組 3D 展示").getByRole("button", { name: "床邊求助" }).click();
-  await expect(page.getByText("床邊求助事件 +40").first()).toBeVisible();
-  await expect(page.getByText("呼叫訊號送出").first()).toBeVisible();
+  await modeTabs.getByRole("button", { name: "照護團隊處理" }).click();
+  await expect(stage).toHaveClass(/mode-team/);
+  await expect(page.getByText("照護協調隊列").first()).toBeVisible();
+  await expect(page.getByText(/A-203｜Critical｜已分派照護人員/).first()).toBeVisible();
 
-  await page.getByRole("button", { name: "床邊求助" }).last().click();
-  await expect(page.getByText("已建立床邊求助事件").first()).toBeVisible();
+  await consoleNav.getByRole("button", { name: "風險引擎" }).click();
+  const scoreCard = page.getByRole("region", { name: "風險分數" });
+  await expect(scoreCard).toContainText("100");
+  await expect(scoreCard).toContainText("Critical｜最高照護協作優先級｜已分派照護人員");
+  await expect(scoreCard).toContainText("展示分數封頂為 100");
 
-  await page.getByLabel("三端模組 3D 展示").getByRole("button", { name: "照護團隊處理" }).click();
-  await expect(page.getByText("照護端風險分流").first()).toBeVisible();
-  await expect(page.getByText(/HR 低於個人基準/).first()).toBeVisible();
-  await expect(page.getByText("通知家屬").first()).toBeVisible();
+  await page.getByRole("button", { name: "A-118 70" }).click();
+  await expect(scoreCard).toContainText("70");
+  await expect(scoreCard).toContainText("30 分鐘內追蹤");
 
-  await page.getByRole("button", { name: "立即關注" }).first().click();
-  await expect(page.getByText("已通知照護端與家屬").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "已分派" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "A-076 0" }).click();
+  await expect(scoreCard).toContainText("0");
+  await expect(scoreCard).toContainText("例行觀察");
 });

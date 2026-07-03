@@ -1,4 +1,6 @@
-import { calculateRisk, levelFromScore, type PatientSignals, type RiskResult } from "./riskEngine";
+import { buildWorkflowViewModel } from "../../domain/buildWorkflowViewModel";
+import { mockCareCases } from "../../data/mockCareCases";
+import { calculateRisk, type PatientSignals, type RiskResult } from "./riskEngine";
 
 export interface MockPatient {
   id: string;
@@ -14,77 +16,51 @@ export interface PatientWithRisk extends MockPatient {
   risk: RiskResult;
 }
 
-export const mockPatients: MockPatient[] = [
-  {
-    id: "a203",
-    displayId: "A-203",
-    name: "侯冠宇",
-    room: "返家恢復期",
-    statusAction: "立即關注",
-    queueSummary: "HR 52 / SpO2 93 / 床邊求助",
-    signals: {
-      heartRate: 52,
-      spo2: 93,
-      activityDropPercent: 31,
-      hoursAfterDialysis: 3,
-      reportsDizziness: true,
-      reportsColdSweat: true,
-      bedsideHelpEvent: true
-    }
-  },
-  {
-    id: "a118",
-    displayId: "A-118",
-    name: "林○芬",
-    room: "返家 5 小時",
-    statusAction: "30 分鐘內追蹤",
-    queueSummary: "活動量下降",
-    signals: {
-      heartRate: 58,
-      spo2: 95,
-      activityDropPercent: 24,
-      hoursAfterDialysis: 4,
-      reportsDizziness: true,
-      reportsColdSweat: false,
-      bedsideHelpEvent: false
-    }
-  },
-  {
-    id: "a076",
-    displayId: "A-076",
-    name: "張○德",
-    room: "例行觀察",
-    statusAction: "例行觀察",
-    queueSummary: "生命徵象穩定",
-    signals: {
-      heartRate: 68,
-      spo2: 97,
-      activityDropPercent: 8,
-      hoursAfterDialysis: 8,
-      reportsDizziness: false,
-      reportsColdSweat: false,
-      bedsideHelpEvent: false
-    }
-  }
-];
+function legacyId(patientId: string) {
+  return patientId.toLowerCase().replace("-", "");
+}
 
-const scoreOverrides: Record<string, number> = {
-  a203: 100,
-  a118: 76,
-  a076: 18
-};
+function signalsFromCareCase(careCase: (typeof mockCareCases)[number]): PatientSignals {
+  const symptoms = new Set(careCase.helpEvent?.symptoms ?? []);
+  const report = careCase.caregiverReport ?? "";
+
+  return {
+    heartRate: careCase.telemetry.hr ?? 0,
+    spo2: careCase.telemetry.spo2 ?? 0,
+    activityDropPercent: careCase.telemetry.activityDropPercent ?? 0,
+    hoursAfterDialysis: careCase.recoveryContext?.afterDialysisHours ?? 0,
+    reportsDizziness: symptoms.has("頭暈") || report.includes("頭暈"),
+    reportsColdSweat: symptoms.has("冒冷汗") || report.includes("冒冷汗"),
+    bedsideHelpEvent: Boolean(careCase.helpEvent?.active)
+  };
+}
+
+function queueSummaryFromCase(careCase: (typeof mockCareCases)[number]) {
+  if (careCase.helpEvent?.active) {
+    return `HR ${careCase.telemetry.hr} / SpO2 ${careCase.telemetry.spo2} / 求助事件`;
+  }
+
+  if ((careCase.telemetry.activityDropPercent ?? 0) >= 20) return "活動量下降";
+  return "生命徵象穩定";
+}
+
+export const mockPatients: MockPatient[] = mockCareCases.map((careCase) => {
+  const workflow = buildWorkflowViewModel(careCase);
+
+  return {
+    id: legacyId(careCase.patientId),
+    displayId: careCase.patientId,
+    name: careCase.displayName,
+    room: careCase.recoveryContext ? `返家 ${careCase.recoveryContext.afterDialysisHours} 小時` : "返家恢復期",
+    statusAction: workflow.assignment.label,
+    queueSummary: queueSummaryFromCase(careCase),
+    signals: signalsFromCareCase(careCase)
+  };
+});
 
 export function patientsWithRisk(patients: MockPatient[] = mockPatients): PatientWithRisk[] {
-  return patients.map((patient) => {
-    const risk = calculateRisk(patient.signals);
-    const score = scoreOverrides[patient.id] ?? risk.score;
-    return {
-      ...patient,
-      risk: {
-        ...risk,
-        score,
-        level: levelFromScore(score)
-      }
-    };
-  });
+  return patients.map((patient) => ({
+    ...patient,
+    risk: calculateRisk(patient.signals)
+  }));
 }

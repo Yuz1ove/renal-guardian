@@ -18,7 +18,7 @@ export const scenePresets: Record<DemoMode, ScenePreset> = {
     eyebrow: "Overview",
     cameraPosition: [0, 1.72, 5.05],
     target: [0, 0.1, 0],
-    description: "手環資料 + 呼叫器事件 → API → risk engine → caregiver dashboard"
+    description: "資料來源與異常事件 → API → risk engine → 照護隊列 → 回覆同步"
   },
   wearable: {
     id: "wearable",
@@ -26,7 +26,7 @@ export const scenePresets: Record<DemoMode, ScenePreset> = {
     eyebrow: "Step 1",
     cameraPosition: [-1.7, 1.35, 4.1],
     target: [-1.25, 0.05, 0.12],
-    description: "聚焦 HR、SpO2、活動量與低血壓趨勢，送出低資料量 packet"
+    description: "聚焦 HR、SpO2、活動量與弱訊號下的低資料量 telemetry packet"
   },
   bedside: {
     id: "bedside",
@@ -34,7 +34,7 @@ export const scenePresets: Record<DemoMode, ScenePreset> = {
     eyebrow: "Step 2",
     cameraPosition: [0.05, 1.3, 3.55],
     target: [0, -0.02, 0.1],
-    description: "一鍵求助、夜間虛弱與回報頭暈事件送往照護端"
+    description: "一鍵求助、夜間虛弱與回報頭暈事件送往風險引擎"
   },
   team: {
     id: "team",
@@ -42,6 +42,6 @@ export const scenePresets: Record<DemoMode, ScenePreset> = {
     eyebrow: "Step 3",
     cameraPosition: [1.62, 1.36, 4.1],
     target: [1.18, 0.12, 0],
-    description: "照護端 dashboard 顯示風險分數、待確認名單與處置建議"
+    description: "照護隊列顯示風險分級、分派狀態與回覆同步"
   }
 };

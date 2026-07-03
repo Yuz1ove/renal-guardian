@@ -4,7 +4,7 @@ const actionMap: Record<RiskLevel, string[]> = {
   stable: ["持續觀察", "維持一般返家休息紀錄"],
   attention: ["請家屬確認患者精神與活動狀態", "30 分鐘後再次檢查生命徵象"],
   warning: ["建議居服員或家屬主動聯繫", "確認是否有頭暈、冒冷汗、虛弱、跌倒風險"],
-  critical: ["立即聯繫照護者", "若有跌倒、意識異常或持續不適，請依照緊急流程處理", "必要時聯絡醫療單位或緊急救護"]
+  critical: ["優先聯繫照護者", "若有跌倒、意識異常或持續不適，建議照護人員依既有流程確認", "必要時由照護人員協助聯絡相關單位"]
 };
 
 function levelFromScore(score: number): RiskLevel {
@@ -38,12 +38,12 @@ export function calculateRiskResult(
 
   if (wearable.heartRate > patient.baselineHeartRate + 20) add(12, "心率高於個人基準 20 bpm");
   if (wearable.heartRate < 55) add(15, "心率低於 55 bpm");
-  if (wearable.systolicBP !== null && wearable.systolicBP < 90) add(20, "同步血壓資料顯示收縮壓低於 90");
+  if (wearable.systolicBP !== null && wearable.systolicBP < 90) add(20, "外部血壓計同步資料低於觀察門檻");
   if (wearable.activityIndex < 30) add(12, "活動指數低於 30");
   if (wearable.posture === "lying" && wearable.activityIndex < 35) add(10, "長時間躺臥且活動偏低");
   if (wearable.fallDetected) add(35, "手環偵測到跌倒事件");
   if (wearable.sosPressed) add(40, "手環 SOS 長按求助");
-  if (bedside.longPressEmergency) add(45, "床邊呼叫器長按緊急求助");
+  if (bedside.longPressEmergency) add(45, "床邊呼叫器長按高優先求助");
   if (bedside.noResponseMinutes > 10) add(20, "呼叫後超過 10 分鐘未回應");
   if (!bedside.deviceOnline || wearable.signalQuality < 20) add(10, "裝置離線或訊號品質過低");
   if (bedside.battery < 15 || wearable.battery < 15) add(5, "裝置電量低於 15%");

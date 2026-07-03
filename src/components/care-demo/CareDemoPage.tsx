@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  Award,
   BellRing,
+  ChevronLeft,
+  ChevronRight,
   CircuitBoard,
   ClipboardList,
   Cpu,
@@ -14,15 +17,17 @@ import {
   RefreshCcw,
   Route,
   ServerCog,
+  ShieldAlert,
   ShieldCheck,
-  Watch
+  Watch,
+  X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { CareProcessFlowCanvas } from "./CareProcessFlowCanvas";
 import { buildWorkflowViewModel } from "../../domain/buildWorkflowViewModel";
 import type { RiskReason, WorkflowStage, WorkflowViewModel } from "../../domain/careWorkflowTypes";
 import { mockCareCases } from "../../data/mockCareCases";
-import { riskLevelLabel, riskLevelZhLabel } from "../../domain/riskScoring";
+import { riskCategoryCaps, riskLevelLabel, riskLevelZhLabel } from "../../domain/riskScoring";
 import { modeNarratives } from "./demoFlowData";
 import { DeviceModuleCard } from "./DeviceModuleCard";
 import { DemoModeTabs } from "./DemoModeTabs";
@@ -39,6 +44,9 @@ import { AssistiveDeviceDiagram } from "../assistive-design/AssistiveDeviceDiagr
 import { WearableFlowDemo } from "../../pages/WearableFlowDemo";
 import { CareOperationsWorkbench } from "./CareOperationsWorkbench";
 import { SystemRuntimeMonitor } from "./SystemRuntimeMonitor";
+import { operationsHelpEvents, operationsPatients } from "../../data/careOperationsDemoData";
+import { calculateRiskScore, operationRiskLabel } from "../../lib/careOperationsEngine";
+import type { Patient } from "../../types/careOperations";
 import "../../styles/care-demo.css";
 
 type ConsoleViewId =
@@ -58,6 +66,16 @@ interface ConsoleViewMeta {
   icon: LucideIcon;
 }
 
+interface JudgeStepMeta {
+  id: string;
+  title: string;
+  view: ConsoleViewId;
+  mode: DemoMode;
+  stage?: WorkflowStage;
+  lookHere: string;
+  takeaway: string;
+}
+
 const consoleViews: ConsoleViewMeta[] = [
   { id: "overview", label: "總覽", eyebrow: "Overview", icon: LayoutDashboard },
   { id: "flow", label: "串聯流程", eyebrow: "Workflow Flow", icon: Network },
@@ -73,10 +91,105 @@ function isConsoleViewId(value: string): value is ConsoleViewId {
   return consoleViews.some((view) => view.id === value);
 }
 
-function initialConsoleView(): ConsoleViewId {
-  if (typeof window === "undefined") return "overview";
+const judgeSteps: JudgeStepMeta[] = [
+  {
+    id: "overview",
+    title: "系統總覽",
+    view: "overview",
+    mode: "overview",
+    lookHere: "這裡展示系統如何把返家恢復期資料、求助事件、照護隊列與分派狀態收在同一個 Console。",
+    takeaway: "先理解問題範圍與 demo 的資料來源，評審可以快速知道不是單一警報頁，而是照護協作系統。"
+  },
+  {
+    id: "flow",
+    title: "核心串聯流程",
+    view: "flow",
+    mode: "overview",
+    stage: "packet",
+    lookHere: "這裡展示資料如何從手環與床邊呼叫器進入 API、風險引擎、照護隊列與回寫流程。",
+    takeaway: "請注意每個節點都讀同一份 workflow view model，避免展示與資料邏輯脫節。"
+  },
+  {
+    id: "wristband",
+    title: "手環資料流",
+    view: "wristband",
+    mode: "wearable",
+    stage: "telemetry",
+    lookHere: "這裡展示低資料量封包、BLE / Gateway ACK、弱訊號 retry 與 critical help_event priority queue。",
+    takeaway: "手環頁說明為什麼求助事件不容易遺失：local buffer、retry queue、packetId、ACK 狀態與 lastSyncTime 都會被保留。"
+  },
+  {
+    id: "risk-engine",
+    title: "風險引擎",
+    view: "riskEngine",
+    mode: "overview",
+    stage: "riskEngine",
+    lookHere: "這裡展示 workflow.risk.score、rawScore、reasons、confidence 與 dataQuality 如何被拆解成可審查的表格。",
+    takeaway: "評分不是任意加總，頁面會明確標示類別 cap、理由去重與資料品質保護機制。"
+  },
+  {
+    id: "case-animation",
+    title: "案例動畫",
+    view: "caseWalkthrough",
+    mode: "overview",
+    lookHere: "這裡展示單一案例從狀態變化、求助封包、ACK、風險升級到照護到場的時間序。",
+    takeaway: "動畫把抽象流程變成可被評審跟讀的事件流，並保留 runtime log 與封包摘要。"
+  },
+  {
+    id: "device-blueprint",
+    title: "輔具設計圖",
+    view: "deviceBlueprint",
+    mode: "overview",
+    lookHere: "這裡展示手環、床邊呼叫器與照護端 dashboard 的硬體欄位、資料串接與弱網處理設計。",
+    takeaway: "評審可以看到作品不是只有 UI，而是把輔具、資料流與照護流程一起設計。"
+  },
+  {
+    id: "runtime",
+    title: "系統程式運行",
+    view: "systemRuntime",
+    mode: "overview",
+    stage: "riskEngine",
+    lookHere: "這裡展示 event receiver、packet normalizer、risk engine、alert queue、dispatch、communication adapter 與 audit log。",
+    takeaway: "這一步用類後端監控台說明系統如何運行，而不是只靠靜態簡報。"
+  },
+  {
+    id: "submission-summary",
+    title: "投稿亮點總結",
+    view: "systemRuntime",
+    mode: "overview",
+    lookHere: "這裡整理可解釋風險、低資料量可靠傳輸、安全限制與投稿前工程驗收清單。",
+    takeaway: "最後請看 Submission Readiness 面板，確認 demo guide、安全文案、無真實個資與本地驗收命令都已列出。"
+  }
+];
+
+function judgeStepIndexFromId(stepId: string | undefined) {
+  if (!stepId) return 0;
+  const index = judgeSteps.findIndex((step) => step.id === stepId);
+  return index >= 0 ? index : 0;
+}
+
+function parseConsoleHash():
+  | { type: "judge"; stepIndex: number }
+  | { type: "view"; view: ConsoleViewId }
+  | null {
+  if (typeof window === "undefined") return null;
   const hashView = window.location.hash.replace("#", "");
-  return isConsoleViewId(hashView) ? hashView : "overview";
+  if (hashView === "judge" || hashView.startsWith("judge:")) {
+    return { type: "judge", stepIndex: judgeStepIndexFromId(hashView.split(":")[1]) };
+  }
+  return isConsoleViewId(hashView) ? { type: "view", view: hashView } : null;
+}
+
+function initialConsoleView(): ConsoleViewId {
+  const parsed = parseConsoleHash();
+  if (parsed?.type === "view") return parsed.view;
+  if (parsed?.type === "judge") return judgeSteps[parsed.stepIndex]?.view ?? "overview";
+  return "overview";
+}
+
+function initialJudgeStepIndex() {
+  const parsed = parseConsoleHash();
+  return parsed?.type === "judge" ? parsed.stepIndex : null;
 }
 
 const focusByView: Partial<Record<ConsoleViewId, { mode: DemoMode; stage?: WorkflowStage }>> = {
@@ -97,6 +210,117 @@ const categoryLabels: Record<RiskReason["category"], string> = {
   dataQuality: "資料品質"
 };
 
+const categoryOrder: RiskReason["category"][] = [
+  "physiological",
+  "activityRecovery",
+  "helpEvent",
+  "dataQuality"
+];
+
+const riskCategoryActions: Record<RiskReason["category"], string> = {
+  physiological: "請照護端確認生命徵象趨勢，必要時安排人工複核。",
+  activityRecovery: "納入返家恢復期追蹤，確認活動下降是否與疲倦或不適相關。",
+  helpEvent: "求助事件進入照護確認與事件佇列，優先提醒照護團隊。",
+  dataQuality: "提示重新佩戴、補測或檢查連線，不把低品質資料當成診斷結論。"
+};
+
+const safetyGuardrails = [
+  "本系統不是醫療診斷工具；畫面中的分數與建議只用於展示照護協調流程。",
+  "風險分數只作照護協調與異常提醒，協助照護端排序、追蹤與人工確認。",
+  "119 升級為示範流程，正式部署需依機構 SOP、授權角色與在地緊急應變規範執行。",
+  "展示資料皆為合成案例，不使用真實患者個資。",
+  "感測資料只看趨勢、事件與資料品質，不取代醫師判斷。"
+];
+
+const validationChecklist = [
+  { label: "npm run build", status: "Manual", note: "local validation before upload" },
+  { label: "npm run validate:demo", status: "Manual", note: "risk and demo logic audit" },
+  { label: "npm run validate:glb", status: "Manual", note: "3D model structure audit" },
+  { label: "npm run validate:runtime", status: "Manual", note: "Playwright runtime smoke test" },
+  { label: "npm run package:submission", status: "Manual", note: "generate final package" },
+  { label: "npm run validate:submission", status: "Manual", note: "submission package audit" },
+  { label: "No real patient data", status: "PASS", note: "synthetic demo IDs and anonymized names" },
+  { label: "Medical safety copy present", status: "PASS", note: "guardrails are visible in the Console" },
+  { label: "Mobile responsive checked", status: "Manual", note: "390 / 768 / 1024 px viewport review" },
+  { label: "Demo guide available", status: "PASS", note: "Judge Mode guides the eight judging beats" }
+] as const;
+
+function workflowStateForRisk(patient: (typeof operationsPatients)[number], riskLevel: ReturnType<typeof calculateRiskScore>["riskLevel"]) {
+  if (riskLevel === "critical" || patient.bedsideButtonStatus === "pressed") return "emergencyEscalated";
+  if (riskLevel === "warning") return "confirmPatient";
+  if (riskLevel === "watch") return "riskDetected";
+  return "normalMonitoring";
+}
+
+function careConsoleLocation(locationStatus: string): NonNullable<Patient["location"]> {
+  const confidenceMatch = locationStatus.match(/confidence\s+(\d+)/i);
+  const source: NonNullable<Patient["location"]>["source"] =
+    /GPS/i.test(locationStatus) && /gateway|beacon|indoor/i.test(locationStatus)
+      ? "hybrid"
+      : /GPS/i.test(locationStatus)
+        ? "GPS"
+        : "indoor";
+
+  return {
+    label: locationStatus,
+    confidence: confidenceMatch ? Number(confidenceMatch[1]) : source === "GPS" ? 82 : source === "hybrid" ? 76 : 88,
+    source
+  };
+}
+
+function buildCareConsolePatients(): Patient[] {
+  return operationsPatients.map((patient) => {
+    const helpEvent = operationsHelpEvents[patient.patientId];
+    const risk = calculateRiskScore(patient, helpEvent);
+
+    return {
+      id: patient.patientId,
+      name: patient.codeName,
+      room: patient.patientId,
+      severity: operationRiskLabel[risk.riskLevel] as Patient["severity"],
+      riskScore: risk.riskScore,
+      hr: patient.hr,
+      spo2: patient.spo2,
+      motionState: patient.motionState,
+      activityDropPercent: patient.activityDropPercent,
+      signalQuality: patient.signalQuality,
+      connectionPath: patient.connectionPath,
+      workflowState: workflowStateForRisk(patient, risk.riskLevel),
+      lastSyncTime: patient.lastSyncTime,
+      helpEvent: {
+        active: helpEvent.active,
+        source: helpEvent.source === "bedside_button" ? "bedside_button" : helpEvent.source === "system_prediction" ? "system_prediction" : "bracelet",
+        createdAt: helpEvent.createdAt
+      },
+      packet: {
+        id: `pkt-${patient.patientId}`,
+        delaySeconds: patient.packetDelaySeconds,
+        bufferedCount: patient.bufferedPacketCount,
+        payloadSizeKb: 0.8,
+        acknowledgementStatus: patient.acknowledgementStatus
+      },
+      location: careConsoleLocation(patient.locationStatus),
+      riskBreakdown: [
+        { label: "生理風險", points: risk.matrix.physiologicalRisk, description: "HR / SpO2 生命徵象加權" },
+        { label: "活動風險", points: risk.matrix.activityRisk, description: "活動下降與 motionState 加權" },
+        { label: "求助事件", points: risk.matrix.helpEventRisk, description: "helpEvent / pressed 狀態" },
+        { label: "通訊風險", points: risk.matrix.communicationRisk, description: "signalQuality、packet delay、buffered packets" },
+        { label: "加總分數", points: risk.matrix.totalScore, description: operationRiskLabel[risk.matrix.level] }
+      ]
+    };
+  });
+}
+
+function initialSelectedPatientId(patients: Patient[]) {
+  const critical = patients.find((patient) => patient.severity === "Critical");
+  return critical?.id ?? patients[0]?.id ?? "";
+}
+
+function selectedPatientCopyFromPatient(patient: Patient | undefined) {
+  if (!patient) return "尚未載入病人";
+  return `${patient.room}｜${patient.name}｜${patient.severity}｜riskScore ${patient.riskScore}`;
+}
+
 function viewTitle(viewId: ConsoleViewId) {
   return consoleViews.find((view) => view.id === viewId)?.label ?? "總覽";
 }
@@ -109,12 +333,14 @@ function ViewHeader({
   view,
   title,
   description,
-  workflow
+  workflow,
+  selectedSummary
 }: {
   view: ConsoleViewId;
   title: string;
   description: string;
   workflow: WorkflowViewModel;
+  selectedSummary?: string;
 }) {
   return (
     <header className="console-view-header">
@@ -124,7 +350,7 @@ function ViewHeader({
         <p>{description}</p>
       </div>
       <aside>
-        <b>{selectedPatientCopy(workflow)}</b>
+        <b>{selectedSummary ?? selectedPatientCopy(workflow)}</b>
         <small>{workflow.risk.safetyCopy}</small>
       </aside>
     </header>
@@ -154,6 +380,66 @@ function PatientSwitcher({
         </button>
       ))}
     </div>
+  );
+}
+
+function JudgeGuide({
+  stepIndex,
+  onStart,
+  onPrevious,
+  onNext,
+  onExit
+}: {
+  stepIndex: number | null;
+  onStart: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
+  onExit: () => void;
+}) {
+  const activeStep = stepIndex === null ? null : judgeSteps[stepIndex];
+
+  return (
+    <section className={`judge-guide${activeStep ? " is-active" : ""}`} aria-label="評審導覽模式">
+      <header>
+        <div>
+          <span>Award Readiness Guide</span>
+          <strong>評審導覽</strong>
+          <p>依序走過系統總覽、串聯流程、手環資料流、風險引擎、案例動畫、輔具設計圖、runtime 與投稿亮點。</p>
+        </div>
+        <button type="button" className="judge-start-button" onClick={activeStep ? onExit : onStart}>
+          {activeStep ? <X size={16} /> : <Award size={16} />}
+          {activeStep ? "退出導覽" : "開始評審導覽"}
+        </button>
+      </header>
+
+      {activeStep ? (
+        <div className="judge-step-card">
+          <div>
+            <span>Step {stepIndex + 1} / {judgeSteps.length}</span>
+            <h2>{activeStep.title}</h2>
+            <p>
+              <b>評審請看這裡：</b>
+              {activeStep.lookHere}
+            </p>
+            <small>{activeStep.takeaway}</small>
+          </div>
+          <nav className="judge-step-controls" aria-label="評審導覽控制">
+            <button type="button" onClick={onPrevious} disabled={stepIndex === 0}>
+              <ChevronLeft size={16} />
+              上一頁
+            </button>
+            <button type="button" onClick={onNext} disabled={stepIndex === judgeSteps.length - 1}>
+              下一頁
+              <ChevronRight size={16} />
+            </button>
+            <button type="button" onClick={onExit}>
+              <X size={16} />
+              退出導覽
+            </button>
+          </nav>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -279,8 +565,28 @@ function OverviewView({
         </section>
       </div>
 
+      <SafetyGuardrailsPanel />
       <SystemLayerCards />
       <CareQueuePanel workflows={workflows} selectedPatientId={workflow.case.patientId} onSelectPatient={onSelectPatient} />
+    </section>
+  );
+}
+
+function SafetyGuardrailsPanel() {
+  return (
+    <section className="safety-guardrails-panel" aria-label="安全與限制">
+      <header>
+        <ShieldAlert size={18} />
+        <div>
+          <span>Medical / Ethical Safety Guardrails</span>
+          <strong>安全與限制</strong>
+        </div>
+      </header>
+      <ul>
+        {safetyGuardrails.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -376,6 +682,92 @@ function WristbandSourceView({
   );
 }
 
+function RiskScoreBreakdown({ workflow }: { workflow: WorkflowViewModel }) {
+  const rows = categoryOrder.map((category) => {
+    const reasons = workflow.risk.reasons.filter((reason) => reason.category === category && reason.points > 0);
+    const rawPoints = reasons.reduce((total, reason) => total + reason.points, 0);
+    const cappedPoints = Math.min(rawPoints, riskCategoryCaps[category]);
+
+    return {
+      category,
+      trigger: reasons.length ? reasons.map((reason) => reason.label).join("；") : "未觸發加分條件",
+      score: rawPoints > cappedPoints ? `${cappedPoints} / raw ${rawPoints}` : `${cappedPoints}`,
+      protection:
+        category === "dataQuality"
+          ? `資料品質保護：dataQuality ${workflow.risk.dataQuality}，confidence ${workflow.risk.confidence}，最多 +${riskCategoryCaps[category]}`
+          : `類別 cap +${riskCategoryCaps[category]}；reason.id 去重後才納入`,
+      action: riskCategoryActions[category]
+    };
+  });
+  const uniqueReasonIds = new Set(workflow.risk.reasons.map((reason) => reason.id)).size;
+
+  return (
+    <section className="score-breakdown-panel" aria-label="Score Breakdown 分數拆解">
+      <header>
+        <div>
+          <span>Score Breakdown / 分數拆解</span>
+          <strong>風險分數可解釋性</strong>
+          <p>此分數用於照護協調與異常提醒，不是醫療診斷或治療建議。</p>
+        </div>
+      </header>
+
+      <div className="breakdown-summary-grid">
+        <article>
+          <span>workflow.risk.score</span>
+          <b>{workflow.risk.score}</b>
+          <small>final display score</small>
+        </article>
+        <article>
+          <span>workflow.risk.rawScore</span>
+          <b>{workflow.risk.rawScore}</b>
+          <small>{workflow.risk.capped ? "capped at 100" : "no global cap applied"}</small>
+        </article>
+        <article>
+          <span>workflow.risk.confidence</span>
+          <b>{workflow.risk.confidence}</b>
+          <small>derived from data quality</small>
+        </article>
+        <article>
+          <span>workflow.risk.dataQuality</span>
+          <b>{workflow.risk.dataQuality}</b>
+          <small>{workflow.risk.dataQualityNotes.length ? "review notes present" : "trend data usable"}</small>
+        </article>
+      </div>
+
+      <div className="breakdown-guardrail-strip" aria-label="score protection mechanisms">
+        <span>類別 cap：生理 {riskCategoryCaps.physiological} / 活動 {riskCategoryCaps.activityRecovery} / 求助 {riskCategoryCaps.helpEvent} / 品質 {riskCategoryCaps.dataQuality}</span>
+        <span>理由去重：{uniqueReasonIds} unique reason id(s)</span>
+        <span>資料品質：{workflow.risk.dataQuality} / confidence {workflow.risk.confidence}</span>
+      </div>
+
+      <div className="score-breakdown-table">
+        <table>
+          <thead>
+            <tr>
+              <th>類別</th>
+              <th>觸發條件</th>
+              <th>分數</th>
+              <th>上限或保護機制</th>
+              <th>對應照護動作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.category}>
+                <td>{categoryLabels[row.category]}</td>
+                <td>{row.trigger}</td>
+                <td>{row.score}</td>
+                <td>{row.protection}</td>
+                <td>{row.action}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function RiskEngineView({ workflow }: { workflow: WorkflowViewModel }) {
   const scoredReasons = workflow.risk.reasons.filter((reason) => reason.points > 0);
   const categories = Array.from(new Set(workflow.risk.reasons.map((reason) => reason.category)));
@@ -417,8 +809,10 @@ function RiskEngineView({ workflow }: { workflow: WorkflowViewModel }) {
             </li>
           </ol>
         </section>
+        <RiskScoreBreakdown workflow={workflow} />
         <RiskReasonList workflow={workflow} />
         <DataQualityCard workflow={workflow} />
+        <SafetyGuardrailsPanel />
       </div>
     </section>
   );
@@ -426,9 +820,13 @@ function RiskEngineView({ workflow }: { workflow: WorkflowViewModel }) {
 
 function CareConsoleView({
   workflow,
+  selectedPatientId,
+  selectedSummary,
   onSelectPatient
 }: {
   workflow: WorkflowViewModel;
+  selectedPatientId: string;
+  selectedSummary: string;
   onSelectPatient: (patientId: string) => void;
 }) {
   return (
@@ -438,8 +836,9 @@ function CareConsoleView({
         title="照護工作台"
         description="居服員、守望隊與照護協調員使用的操作端，從警報佇列、個案狀態、派工、低資料量確認到事件解除形成完整狀態機。"
         workflow={workflow}
+        selectedSummary={selectedSummary}
       />
-      <CareOperationsWorkbench selectedPatientId={workflow.case.patientId} onSelectPatient={onSelectPatient} />
+      <CareOperationsWorkbench selectedPatientId={selectedPatientId} onSelectPatient={onSelectPatient} />
     </section>
   );
 }
@@ -472,6 +871,62 @@ function DeviceBlueprintView({ workflow }: { workflow: WorkflowViewModel }) {
   );
 }
 
+function SubmissionReadinessPanel() {
+  return (
+    <section className="submission-readiness-panel" aria-label="Submission Readiness 驗收面板">
+      <header>
+        <ClipboardList size={18} />
+        <div>
+          <span>Submission Readiness / 驗收面板</span>
+          <strong>投稿亮點總結與工程驗收清單</strong>
+          <p>此區把評審展示、醫療安全邊界、封包可靠度與本地驗證命令整理成投稿前檢查表。</p>
+        </div>
+      </header>
+
+      <div className="submission-highlight-grid">
+        <article>
+          <span>Explainable Risk</span>
+          <b>分數拆解可審查</b>
+          <p>workflow.risk.reasons、score、rawScore、confidence、dataQuality 都能在 Console 看到。</p>
+        </article>
+        <article>
+          <span>Reliable Packet</span>
+          <b>help_event 優先傳送</b>
+          <p>local buffer、retry queue、packetId、ACK chain 與 lastSyncTime 明確呈現。</p>
+        </article>
+        <article>
+          <span>Safety Design</span>
+          <b>不是醫療診斷</b>
+          <p>安全與限制文案放在主要流程中，避免評審誤解為診斷或治療建議。</p>
+        </article>
+      </div>
+
+      <div className="readiness-table">
+        <table>
+          <thead>
+            <tr>
+              <th>檢查項目</th>
+              <th>status</th>
+              <th>備註</th>
+            </tr>
+          </thead>
+          <tbody>
+            {validationChecklist.map((item) => (
+              <tr key={item.label}>
+                <td>{item.label}</td>
+                <td>
+                  <span className={`readiness-status status-${item.status.toLowerCase()}`}>{item.status}</span>
+                </td>
+                <td>{item.note}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function SystemRuntimeView({ workflow }: { workflow: WorkflowViewModel }) {
   return (
     <section className="console-view" aria-label="系統程式運行">
@@ -482,14 +937,19 @@ function SystemRuntimeView({ workflow }: { workflow: WorkflowViewModel }) {
         workflow={workflow}
       />
       <SystemRuntimeMonitor />
+      <SubmissionReadinessPanel />
     </section>
   );
 }
 
 export function CareDemoPage() {
+  const patients: Patient[] = useMemo(() => buildCareConsolePatients(), []);
   const [mode, setMode] = useState<DemoMode>("overview");
   const [activeView, setActiveView] = useState<ConsoleViewId>(() => initialConsoleView());
-  const [selectedPatientId, setSelectedPatientId] = useState("A-203");
+  const [judgeStepIndex, setJudgeStepIndex] = useState<number | null>(() => initialJudgeStepIndex());
+  const [selectedPatientId, setSelectedPatientId] = useState(() => initialSelectedPatientId(patients));
+  const [autoDemoEnabled, setAutoDemoEnabled] = useState(false);
+  const [lastManualSelectionAt, setLastManualSelectionAt] = useState<number | null>(null);
   const [selectedStage, setSelectedStage] = useState<WorkflowStage | undefined>();
   const [feedback, setFeedback] = useState(modeNarratives.overview.body);
   const [toast, setToast] = useState("");
@@ -500,16 +960,39 @@ export function CareDemoPage() {
         .sort((a, b) => b.risk.score - a.risk.score),
     []
   );
-  const selectedWorkflow =
-    workflows.find((workflow) => workflow.case.patientId === selectedPatientId) ??
-    workflows[0];
+  const selectedPatient = useMemo(
+    () => patients.find((patient) => patient.id === selectedPatientId) ?? patients[0],
+    [patients, selectedPatientId]
+  );
+  const selectedWorkflow = useMemo(
+    () =>
+      workflows.find((workflow) => workflow.case.patientId === selectedPatientId) ??
+      workflows[0],
+    [workflows, selectedPatientId]
+  );
+  const selectedStatusCopy = selectedPatient
+    ? selectedPatientCopyFromPatient(selectedPatient)
+    : selectedPatientCopy(selectedWorkflow);
 
   useEffect(() => {
     function syncViewFromHash() {
-      const hashView = window.location.hash.replace("#", "");
-      if (!isConsoleViewId(hashView)) return;
-      const focus = focusByView[hashView];
-      setActiveView(hashView);
+      const parsed = parseConsoleHash();
+      if (!parsed) return;
+
+      if (parsed.type === "judge") {
+        const step = judgeSteps[parsed.stepIndex] ?? judgeSteps[0];
+        setJudgeStepIndex(parsed.stepIndex);
+        setActiveView(step.view);
+        setSelectedStage(step.stage);
+        setMode(step.mode);
+        setToast("");
+        setFeedback(`評審導覽 ${parsed.stepIndex + 1}/${judgeSteps.length}：${step.title}。${step.lookHere}`);
+        return;
+      }
+
+      const focus = focusByView[parsed.view];
+      setJudgeStepIndex(null);
+      setActiveView(parsed.view);
       setSelectedStage(focus?.stage);
       if (focus?.mode) setMode(focus.mode);
     }
@@ -523,16 +1006,25 @@ export function CareDemoPage() {
 
   function selectPatient(patientId: string) {
     const workflow =
-      workflows.find((item) => item.case.patientId === patientId) ??
-      selectedWorkflow;
-    setSelectedPatientId(workflow.case.patientId);
+      workflows.find((item) => item.case.patientId === patientId);
+    const patient = patients.find((item) => item.id === patientId);
+    if (!workflow && !patient) return;
+
+    setSelectedPatientId(patientId);
+    setLastManualSelectionAt(Date.now());
+    setAutoDemoEnabled(false);
     setSelectedStage(undefined);
     setToast("");
-    setFeedback(`${workflow.case.patientId} 已載入：${riskLevelLabel[workflow.risk.level]}｜${workflow.assignment.label}。流程圖、原因清單與時間序已同步。`);
+    setFeedback(
+      patient
+        ? `${selectedPatientCopyFromPatient(patient)} 已載入：Patient Live Status、Care Actions、Packet Delivery 與 119 flow 已同步。`
+        : `${workflow?.case.patientId} 已載入：${workflow ? riskLevelLabel[workflow.risk.level] : "Unknown"}｜${workflow?.assignment.label ?? "未指定"}。流程圖、原因清單與時間序已同步。`
+    );
   }
 
   function changeView(nextView: ConsoleViewId) {
     const focus = focusByView[nextView];
+    setJudgeStepIndex(null);
     setActiveView(nextView);
     if (typeof window !== "undefined" && window.location.hash !== `#${nextView}`) {
       window.history.replaceState(null, "", `#${nextView}`);
@@ -540,7 +1032,30 @@ export function CareDemoPage() {
     setToast("");
     setSelectedStage(focus?.stage);
     if (focus?.mode) setMode(focus.mode);
-    setFeedback(`${viewTitle(nextView)} 已載入：${selectedPatientCopy(selectedWorkflow)}。`);
+    setFeedback(`${viewTitle(nextView)} 已載入：${selectedStatusCopy}。`);
+  }
+
+  function applyJudgeStep(nextIndex: number) {
+    const clamped = Math.max(0, Math.min(judgeSteps.length - 1, nextIndex));
+    const step = judgeSteps[clamped];
+    setJudgeStepIndex(clamped);
+    setActiveView(step.view);
+    setSelectedStage(step.stage);
+    setMode(step.mode);
+    setToast("");
+    setFeedback(`評審導覽 ${clamped + 1}/${judgeSteps.length}：${step.title}。${step.lookHere}`);
+    if (typeof window !== "undefined") {
+      window.history.replaceState(null, "", `#judge:${step.id}`);
+    }
+  }
+
+  function exitJudgeMode() {
+    setJudgeStepIndex(null);
+    setToast("");
+    setFeedback(`${viewTitle(activeView)} 已載入：${selectedStatusCopy}。`);
+    if (typeof window !== "undefined" && window.location.hash.startsWith("#judge")) {
+      window.history.replaceState(null, "", `#${activeView}`);
+    }
   }
 
   function changeMode(nextMode: DemoMode) {
@@ -564,35 +1079,43 @@ export function CareDemoPage() {
   }
 
   function receiveWearablePacket() {
+    const patientId = selectedPatient?.id ?? selectedWorkflow.case.patientId;
     setActiveView("wristband");
     setMode("wearable");
-    setSelectedPatientId("A-203");
     setSelectedStage("telemetry");
-    setFeedback("已接收 A-203 手環低資料量封包，HR / SpO2 / 活動量同步更新。");
-    setToast("已接收 A-203 手環低資料量封包");
+    setFeedback(`已接收 ${patientId} 手環低資料量封包，HR / SpO2 / 活動量同步更新。`);
+    setToast(`已接收 ${patientId} 手環低資料量封包`);
   }
 
   function triggerBedsideEvent() {
+    const patientId = selectedPatient?.id ?? selectedWorkflow.case.patientId;
     setActiveView("flow");
     setMode("bedside");
-    setSelectedPatientId("A-203");
     setSelectedStage("helpEvent");
-    setFeedback("已建立 A-203 求助事件，等待照護確認。");
-    setToast("已建立 A-203 求助事件，等待照護確認");
+    setFeedback(`已建立 ${patientId} 求助事件，等待照護確認。`);
+    setToast(`已建立 ${patientId} 求助事件，等待照護確認`);
   }
 
   function focusA203() {
+    const patientId = selectedPatient?.id ?? selectedWorkflow.case.patientId;
     setActiveView("careConsole");
     setMode("team");
-    setSelectedPatientId("A-203");
     setSelectedStage("assignment");
-    setFeedback("已同步 A-203 分派狀態與照護團隊通知。");
-    setToast("已同步 A-203 分派狀態與照護團隊通知");
+    setFeedback(`已同步 ${patientId} 分派狀態與照護團隊通知。`);
+    setToast(`已同步 ${patientId} 分派狀態與照護團隊通知`);
   }
 
   return (
     <main className="care-demo-page demo-console-page">
       <section className="demo-console-shell" aria-label="腎安洗腎返家恢復期照護協作系統 Demo Console">
+        <JudgeGuide
+          stepIndex={judgeStepIndex}
+          onStart={() => applyJudgeStep(0)}
+          onPrevious={() => applyJudgeStep((judgeStepIndex ?? 0) - 1)}
+          onNext={() => applyJudgeStep((judgeStepIndex ?? 0) + 1)}
+          onExit={exitJudgeMode}
+        />
+
         <header className="console-topbar">
           <div className="console-brand">
             <span>AI Care Coordination Demo Console</span>
@@ -603,7 +1126,7 @@ export function CareDemoPage() {
             <span>Selected Patient</span>
             <PatientSwitcher
               workflows={workflows}
-              selectedPatientId={selectedWorkflow.case.patientId}
+              selectedPatientId={selectedPatientId}
               onSelectPatient={selectPatient}
             />
           </div>
@@ -638,8 +1161,12 @@ export function CareDemoPage() {
 
         {activeView === "wristband" ? (
           <WearableFlowDemo
-            patientId={selectedWorkflow.case.patientId}
-            displayName={selectedWorkflow.case.displayName}
+            patientId={selectedPatient?.id ?? selectedWorkflow.case.patientId}
+            displayName={
+              selectedWorkflow.case.patientId === selectedPatient?.id
+                ? selectedWorkflow.case.displayName
+                : selectedPatient?.name ?? selectedWorkflow.case.displayName
+            }
           />
         ) : null}
 
@@ -650,6 +1177,8 @@ export function CareDemoPage() {
         {activeView === "careConsole" ? (
           <CareConsoleView
             workflow={selectedWorkflow}
+            selectedPatientId={selectedPatientId}
+            selectedSummary={selectedStatusCopy}
             onSelectPatient={selectPatient}
           />
         ) : null}

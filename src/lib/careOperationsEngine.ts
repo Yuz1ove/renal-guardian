@@ -1,11 +1,14 @@
 import type {
   AlertCase,
   AlertStatus,
+  CaseActionStatuses,
   CareDemoState,
   AuditLogEntry,
   CareWorkflowAction,
   CareWorker,
   DeliveryStatus,
+  EmergencyFlowNode,
+  EmergencyFlowStatus,
   GeneratedCareEventKind,
   OperationRiskLevel,
   OperationsHelpEvent,
@@ -46,7 +49,7 @@ export const alertStatusLabel: Record<AlertStatus, string> = {
   no_response: "no_response"
 };
 
-function recommendedActionFor(score: number, replyState?: ReplyState) {
+function recommendedActionFor(score: number, patientStatus: PatientStatus, replyState?: ReplyState) {
   if (replyState?.replyCode === 5) return "患者請求立即派人，建議同步守望隊並評估 119 / 緊急醫療升級。";
   if (replyState?.replyCode === 4) return "患者無法起身，請維持 critical 並確認居服員到場。";
   if (replyState?.replyCode === 1 && score <= 60) return "患者回覆安全，改為 acknowledged 並保留追蹤紀錄。";
@@ -54,6 +57,7 @@ function recommendedActionFor(score: number, replyState?: ReplyState) {
   if (score >= 90) return "Critical：先語音確認，同步通知家屬與居服員，必要時升級 119 展示流程。";
   if (score >= 60) return "Warning：要求患者低資料量回覆，並由照護端人工複核。";
   if (score >= 30) return "Watch：發送確認訊息並持續觀察返家恢復趨勢。";
+  if (patientStatus.signalQuality === "offline") return "Stable / Offline：資料品質不足，先補送封包或人工確認，不自動啟動 119 流程。";
   return "Stable：保留紀錄並回到例行監測。";
 }
 
@@ -135,11 +139,17 @@ export function calculateRiskScore(
   const score = physiologicalRisk + activityRisk + helpEventRisk + communicationRisk;
   const riskScore = clampScore(score);
   const riskLevel = mapOperationRiskLevel(riskScore);
+  const emergencyTransportRequired =
+    riskScore >= 90 ||
+    (helpEvent.active && helpEvent.source === "bedside_button") ||
+    patientStatus.bedsideButtonStatus === "pressed";
   const communicationStrategy =
     patientStatus.signalQuality === "offline"
       ? "先寫入本地 buffer；恢復連線後保留 eventId 補送"
-      : patientStatus.signalQuality === "weak" || patientStatus.packetDelaySeconds > 10
-        ? "Critical helpEvent 優先傳送；ack timeout 後切換備援路徑"
+    : patientStatus.signalQuality === "weak" || patientStatus.packetDelaySeconds > 10
+        ? emergencyTransportRequired
+          ? "Critical helpEvent 優先傳送；ack timeout 後切換備援路徑"
+          : "弱訊號 telemetry 需補送與人工確認；119 流程維持 standby"
         : "一般 telemetry 與 helpEvent 分流傳送，求助封包不可被覆蓋";
 
   return {
@@ -155,7 +165,7 @@ export function calculateRiskScore(
       level: riskLevel
     },
     communicationStrategy,
-    recommendedAction: recommendedActionFor(riskScore, replyState),
+    recommendedAction: recommendedActionFor(riskScore, patientStatus, replyState),
     updatedAt: nowIso()
   };
 }
@@ -166,19 +176,238 @@ function priorityFor(level: OperationRiskLevel): AlertCase["priority"] {
   return "normal";
 }
 
-export function determineWorkflowState(alertCase: Pick<AlertCase, "status" | "riskLevel" | "helpEvent" | "patientStatus">): CareDemoState {
+const defaultActionStatuses: CaseActionStatuses = {
+  callPatient: "idle",
+  patientCheckPrompt: "idle",
+  notifyFamily: "idle",
+  workerDispatch: "idle",
+  emergencyEscalation: "idle",
+  timeout: "idle"
+};
+
+function mergeActionStatuses(alertCase: Partial<Pick<AlertCase, "workflow">>, overrides?: Partial<CaseActionStatuses>): CaseActionStatuses {
+  return {
+    ...defaultActionStatuses,
+    ...(alertCase.workflow?.actionStatuses ?? {}),
+    ...(overrides ?? {})
+  };
+}
+
+export function hasCriticalEscalationTrigger(
+  alertCase: Pick<AlertCase, "riskScore" | "helpEvent" | "patientStatus">
+) {
+  return (
+    alertCase.riskScore >= 90 ||
+    (alertCase.helpEvent.active && alertCase.helpEvent.source === "bedside_button") ||
+    alertCase.patientStatus.bedsideButtonStatus === "pressed"
+  );
+}
+
+function statusFromAction(actionStatus: CaseActionStatuses[keyof CaseActionStatuses]): EmergencyFlowStatus {
+  if (actionStatus === "retrying" || actionStatus === "timeout") return "retrying";
+  if (actionStatus === "sent" || actionStatus === "departed") return "sent";
+  if (actionStatus === "confirmed" || actionStatus === "connected" || actionStatus === "arrived") return "confirmed";
+  if (actionStatus === "resolved") return "resolved";
+  return "pending";
+}
+
+function packetEmergencyStatus(packet: AlertCase["lowDataPacket"], emergencyFlowActive: boolean): EmergencyFlowStatus {
+  if (!emergencyFlowActive) return "pending";
+  if (!packet) return "active";
+  if (packet.deliveryStatus === "failed" || packet.acknowledgementStatus === "failed") return "failed";
+  if (packet.deliveryStatus === "retrying" || packet.acknowledgementStatus === "retrying") return "retrying";
+  if (packet.acknowledgementStatus === "acknowledged" || packet.deliveryStatus === "acknowledged" || packet.deliveryStatus === "delivered") {
+    return "confirmed";
+  }
+  if (packet.deliveryStatus === "sent" || packet.acknowledgementStatus === "sent" || packet.acknowledgementStatus === "pending") return "sent";
+  return "active";
+}
+
+function consoleAckStatus(packet: AlertCase["lowDataPacket"], emergencyFlowActive: boolean): EmergencyFlowStatus {
+  if (!emergencyFlowActive) return "pending";
+  if (!packet) return "active";
+  if (packet.acknowledgementStatus === "failed") return "failed";
+  if (packet.acknowledgementStatus === "retrying") return "retrying";
+  return "confirmed";
+}
+
+function caseWritebackStatus(state: CareDemoState): EmergencyFlowStatus {
+  if (state === "resolved") return "resolved";
+  if (state === "responderArrived") return "confirmed";
+  if (state === "waitingResponder") return "sent";
+  if (state === "emergencyEscalated") return "active";
+  return "pending";
+}
+
+export function buildEmergencyEscalationFlow(alertCase: AlertCase): EmergencyFlowNode[] {
+  const isCritical = hasCriticalEscalationTrigger(alertCase);
+  const manualEscalated = Boolean(alertCase.workflow && alertCase.workflow.actionStatuses.emergencyEscalation !== "idle");
+  const triggerAccepted = isCritical || manualEscalated;
+  const packet = alertCase.lowDataPacket;
+  const statuses = mergeActionStatuses(alertCase);
+  const workerDispatch = alertCase.workflow?.workerDispatch ?? { status: "idle" as const };
+  const emergency119Status =
+    alertCase.workflowState === "resolved"
+      ? "resolved"
+      : ["waitingResponder", "responderArrived"].includes(alertCase.workflowState)
+        ? "confirmed"
+        : alertCase.workflowState === "emergencyEscalated"
+          ? "active"
+          : statusFromAction(statuses.emergencyEscalation);
+  const dispatchStatus =
+    workerDispatch.status === "arrived"
+      ? "confirmed"
+      : workerDispatch.status === "departed"
+        ? "active"
+        : workerDispatch.status === "assigned"
+          ? "sent"
+          : statusFromAction(statuses.workerDispatch);
+
+  return [
+    {
+      id: "criticalDetected",
+      label: triggerAccepted ? "Emergency 條件成立" : "119 流程待命",
+      detail: isCritical ? "已由風險矩陣觸發" : manualEscalated ? "照護端手動升級觸發" : "尚未達 Critical 展示條件",
+      status: triggerAccepted ? "confirmed" : "pending",
+      meta: [
+        { label: "condition", value: "riskScore >= 90 / 床邊 SOS / 手動升級" },
+        { label: "riskScore", value: String(alertCase.riskScore) }
+      ]
+    },
+    {
+      id: "priorityPacket",
+      label: "優先封包送出",
+      detail:
+        alertCase.patientStatus.signalQuality === "weak" || alertCase.patientStatus.signalQuality === "offline"
+          ? "signal weak：LTE fallback / retry queue"
+          : "Critical helpEvent 優先傳送",
+      status: packetEmergencyStatus(packet, triggerAccepted),
+      meta: [
+        { label: "packet id", value: packet?.packetId ?? "not generated" },
+        { label: "payload", value: packet ? `${packet.payloadSizeKb.toFixed(1)} KB` : "pending" },
+        { label: "path", value: packet?.connectionPath ?? alertCase.patientStatus.connectionPath },
+        { label: "retry", value: String(packet?.retryCount ?? alertCase.patientStatus.bufferedPacketCount) }
+      ]
+    },
+    {
+      id: "consoleAck",
+      label: "照護端接收",
+      detail: "care console 已收到事件",
+      status: consoleAckStatus(packet, triggerAccepted),
+      meta: [
+        { label: "ack latency", value: `${Math.max(1.2, Math.min(2.8, alertCase.patientStatus.packetDelaySeconds / 7)).toFixed(1)}s` },
+        { label: "ack", value: packet?.acknowledgementStatus ?? alertCase.patientStatus.acknowledgementStatus }
+      ]
+    },
+    {
+      id: "familyNotify",
+      label: "家屬 / 居服員同步通知",
+      detail:
+        statuses.notifyFamily === "retrying"
+          ? "app push 失敗，電話 / 簡訊 / 低頻文字通道 retrying"
+          : "app push、電話、簡訊與低頻文字通道準備同步",
+      status: statusFromAction(statuses.notifyFamily),
+      meta: [
+        { label: "family", value: statuses.notifyFamily },
+        { label: "worker", value: statuses.workerDispatch }
+      ]
+    },
+    {
+      id: "emergency119",
+      label: "119 展示流程啟動",
+      detail: "整理 location confidence、GPS / indoor hint、患者基本狀態摘要",
+      status: emergency119Status,
+      meta: [
+        { label: "location", value: alertCase.patientStatus.locationStatus },
+        { label: "summary", value: `HR ${alertCase.patientStatus.hr}, SpO2 ${alertCase.patientStatus.spo2}%, ${alertCase.patientStatus.motionState}` }
+      ]
+    },
+    {
+      id: "responderDispatch",
+      label: "現場人員派遣 / 等待到場",
+      detail: "assigned worker、distance 與 ETA 持續回寫",
+      status: dispatchStatus,
+      meta: [
+        { label: "assigned worker", value: workerDispatch.workerId ?? alertCase.assignedCareWorkerId ?? "pending" },
+        { label: "distance", value: workerDispatch.distanceKm ? `${workerDispatch.distanceKm.toFixed(1)} km` : "pending" },
+        { label: "ETA", value: workerDispatch.etaMinutes ? `${workerDispatch.etaMinutes} min` : "pending" }
+      ]
+    },
+    {
+      id: "caseWriteback",
+      label: "案件回寫",
+      detail: "workflowState：emergencyEscalated → waitingResponder → responderArrived → resolved",
+      status: caseWritebackStatus(alertCase.workflowState),
+      meta: [
+        { label: "current", value: alertCase.workflowState },
+        { label: "case", value: alertCase.status }
+      ]
+    }
+  ];
+}
+
+function syncCaseWorkflow(
+  alertCase: AlertCase,
+  options: {
+    state?: CareDemoState;
+    escalationFlowVisible?: boolean;
+    actionStatuses?: Partial<CaseActionStatuses>;
+    workerDispatch?: Partial<AlertCase["workflow"]["workerDispatch"]>;
+  } = {}
+): AlertCase {
+  const state = options.state ?? determineWorkflowState(alertCase);
+  const escalationFlowVisible = options.escalationFlowVisible ?? Boolean(alertCase.workflow?.escalationFlowVisible || hasCriticalEscalationTrigger(alertCase));
+  const actionStatuses = mergeActionStatuses(alertCase, options.actionStatuses);
+  const workerDispatch = {
+    status: "idle" as const,
+    ...(alertCase.workflow?.workerDispatch ?? {}),
+    ...(options.workerDispatch ?? {})
+  };
+  const workflowBase = {
+    state,
+    escalationFlowVisible,
+    escalationFlow: [] as EmergencyFlowNode[],
+    assignedWorkerId: alertCase.assignedCareWorkerId ?? alertCase.workflow?.assignedWorkerId,
+    workerDispatch,
+    actionStatuses,
+    eventLog: alertCase.timeline
+  };
+  const syncedCase: AlertCase = {
+    ...alertCase,
+    workflowState: state,
+    workflow: workflowBase
+  };
+
+  return {
+    ...syncedCase,
+    workflow: {
+      ...workflowBase,
+      escalationFlow: buildEmergencyEscalationFlow(syncedCase)
+    }
+  };
+}
+
+export function refreshCaseWorkflow(alertCase: AlertCase): AlertCase {
+  return syncCaseWorkflow(alertCase);
+}
+
+export function determineWorkflowState(
+  alertCase: Pick<AlertCase, "status" | "riskLevel" | "riskScore" | "helpEvent" | "patientStatus" | "assignedCareWorkerId"> & Partial<Pick<AlertCase, "workflow">>
+): CareDemoState {
   if (alertCase.status === "resolved") return "resolved";
-  if (alertCase.status === "arrived") return "homeCareWorkerDispatched";
-  if (alertCase.status === "on_the_way" || alertCase.patientStatus.careWorkerDispatched) return "homeCareWorkerDispatched";
-  if (alertCase.status === "no_response") return "escalationPending";
-  if (alertCase.status === "acknowledged" || alertCase.patientStatus.acknowledgementStatus === "acknowledged") return "patientAcknowledged";
-  if (alertCase.status === "contacting" || alertCase.patientStatus.acknowledgementStatus === "sent") return "patientAckWaiting";
-  if (alertCase.patientStatus.familyNotified) return "familyNotified";
-  if (alertCase.status === "assigned") return "caregiverReviewing";
-  if (alertCase.helpEvent.active && alertCase.helpEvent.source === "bedside_button") return "bedsideHelpPressed";
-  if (alertCase.riskLevel === "critical" || alertCase.riskLevel === "warning") return "anomalyDetected";
-  if (alertCase.status === "pending") return "alertQueued";
-  return "monitoring";
+  if (alertCase.status === "arrived") return "responderArrived";
+  if (alertCase.status === "on_the_way" || alertCase.workflow?.workerDispatch.status === "departed") return "waitingResponder";
+  if (alertCase.status === "no_response" || alertCase.workflow?.actionStatuses.timeout === "timeout") return "emergencyEscalated";
+  if (
+    hasCriticalEscalationTrigger(alertCase) ||
+    Boolean(alertCase.workflow && alertCase.workflow.actionStatuses.emergencyEscalation !== "idle")
+  ) {
+    return "emergencyEscalated";
+  }
+  if (alertCase.assignedCareWorkerId || alertCase.patientStatus.careWorkerDispatched || alertCase.patientStatus.familyNotified) return "notifyCareWorker";
+  if (alertCase.status === "contacting" || alertCase.patientStatus.acknowledgementStatus === "sent" || alertCase.riskLevel === "warning") return "confirmPatient";
+  if (alertCase.riskLevel === "watch") return "riskDetected";
+  return "normalMonitoring";
 }
 
 export function appendAuditLog(alertCase: AlertCase, event: Omit<AuditLogEntry, "id" | "timestamp">): AlertCase {
@@ -187,12 +416,13 @@ export function appendAuditLog(alertCase: AlertCase, event: Omit<AuditLogEntry, 
     timestamp: nowIso(),
     ...event
   };
+  const timeline = [...alertCase.timeline, entry];
 
-  return {
+  return syncCaseWorkflow({
     ...alertCase,
     updatedAt: entry.timestamp,
-    timeline: [...alertCase.timeline, entry]
-  };
+    timeline
+  });
 }
 
 export function createAlertCase(patientStatus: PatientStatus, riskAssessment: RiskAssessment, helpEvent: OperationsHelpEvent): AlertCase {
@@ -212,21 +442,50 @@ export function createAlertCase(patientStatus: PatientStatus, riskAssessment: Ri
     riskAssessment,
     timeline: [],
     slaSecondsRemaining: riskAssessment.riskLevel === "critical" ? 240 : 900,
-    workflowState: "alertQueued"
+    workflowState: "normalMonitoring",
+    workflow: {
+      state: "normalMonitoring",
+      escalationFlowVisible: false,
+      escalationFlow: [],
+      workerDispatch: { status: "idle" },
+      actionStatuses: { ...defaultActionStatuses },
+      eventLog: []
+    }
   };
 
-  const withState = {
-    ...alertCase,
-    workflowState: determineWorkflowState(alertCase)
-  };
-
-  return appendAuditLog(withState, {
+  let nextCase = appendAuditLog(syncCaseWorkflow(alertCase), {
     source: "system",
     event: "system_created_alert",
     decision: `alertQueue created with riskScore = ${riskAssessment.riskScore}`,
     actor: "risk-engine",
     statusChange: "pending"
   });
+
+  if (hasCriticalEscalationTrigger(nextCase)) {
+    nextCase = appendAuditLog(nextCase, {
+      source: "system",
+      event: "critical_risk_detected",
+      decision: "Critical risk detected by matrix trigger",
+      actor: "risk-engine",
+      statusChange: `riskLevel -> ${riskAssessment.riskLevel}`
+    });
+    nextCase = appendAuditLog(nextCase, {
+      source: "device",
+      event: "help_event_packet_prioritized",
+      decision: "Help event packet prioritized for low-data emergency delivery",
+      actor: "packet-router",
+      statusChange: "packet -> sent"
+    });
+    nextCase = appendAuditLog(nextCase, {
+      source: "system",
+      event: "care_console_acknowledged",
+      decision: "Care console acknowledged critical event and prepared escalation summary",
+      actor: "care-console",
+      statusChange: `${nextCase.workflowState}`
+    });
+  }
+
+  return nextCase;
 }
 
 export function assignCareWorker(alertCase: AlertCase, careWorkers: CareWorker[]) {
@@ -246,14 +505,26 @@ export function assignCareWorker(alertCase: AlertCase, careWorkers: CareWorker[]
     patientStatus: {
       ...alertCase.patientStatus,
       careWorkerDispatched: true
+    },
+    workflow: {
+      ...alertCase.workflow,
+      assignedWorkerId: selectedWorker.workerId,
+      workerDispatch: {
+        status: "assigned",
+        workerId: selectedWorker.workerId,
+        assignedAt: nowIso(),
+        distanceKm: selectedWorker.distanceKm,
+        etaMinutes: Math.max(4, Math.round(selectedWorker.distanceKm * 6 + selectedWorker.currentLoad * 2))
+      },
+      actionStatuses: {
+        ...alertCase.workflow.actionStatuses,
+        workerDispatch: "confirmed"
+      }
     }
   };
 
   const nextAlert = appendAuditLog(
-    {
-      ...assignedCase,
-      workflowState: determineWorkflowState(assignedCase)
-    },
+    syncCaseWorkflow(assignedCase),
     {
       source: "system",
       event: "worker_assigned",
@@ -294,14 +565,21 @@ export function applyPatientReply(alertCase: AlertCase, replyCode: 1 | 2 | 3 | 4
     patientStatus: {
       ...alertCase.patientStatus,
       acknowledgementStatus: nextAcknowledgement
+    },
+    workflow: {
+      ...alertCase.workflow,
+      actionStatuses: {
+        ...alertCase.workflow.actionStatuses,
+        patientCheckPrompt: replyCode === 1 ? "confirmed" : "sent",
+        callPatient: replyCode === 1 ? "connected" : alertCase.workflow.actionStatuses.callPatient
+      }
     }
   };
 
   return appendAuditLog(
-    {
-      ...nextCase,
-      workflowState: determineWorkflowState(nextCase)
-    },
+    syncCaseWorkflow(nextCase, {
+      escalationFlowVisible: replyCode >= 4 ? true : alertCase.workflow.escalationFlowVisible
+    }),
     {
       source: "patient",
       event: "patient_replied",
@@ -313,71 +591,146 @@ export function applyPatientReply(alertCase: AlertCase, replyCode: 1 | 2 | 3 | 4
 }
 
 export function advanceCareWorkflow(alertCase: AlertCase, actionType: CareWorkflowAction): AlertCase {
-  const statusByAction: Partial<Record<CareWorkflowAction, AlertStatus>> = {
-    contactPatient: "contacting",
-    markOnTheWay: "on_the_way",
-    markArrived: "arrived",
-    resolveCase: "resolved",
-    noResponseTimeout: "no_response",
-    assignCareWorker: "assigned",
-    escalateEmergency: "assigned"
-  };
-  const nextStatus = statusByAction[actionType] ?? alertCase.status;
-  const familyNotified = actionType === "notifyFamily" ? true : alertCase.patientStatus.familyNotified;
-  const careWorkerDispatched = ["markOnTheWay", "markArrived"].includes(actionType)
-    ? true
-    : alertCase.patientStatus.careWorkerDispatched;
-  const resolvedAt = actionType === "resolveCase" ? nowIso() : alertCase.helpEvent.resolvedAt;
-  const acknowledgementStatus: PatientStatus["acknowledgementStatus"] =
-    actionType === "sendLowDataConfirmation" || actionType === "contactPatient"
-      ? "sent"
-      : actionType === "noResponseTimeout"
-        ? "retrying"
-        : actionType === "resolveCase"
-          ? "acknowledged"
-          : alertCase.patientStatus.acknowledgementStatus;
-
+  let nextStatus: AlertStatus = alertCase.status;
   let nextRisk = alertCase.riskAssessment;
-  if (actionType === "noResponseTimeout") {
-    nextRisk = calculateRiskScore(alertCase.patientStatus, alertCase.helpEvent, { noResponseTimeout: true });
+  let nextPatient: PatientStatus = { ...alertCase.patientStatus };
+  let nextHelpEvent = { ...alertCase.helpEvent };
+  const actionStatuses: CaseActionStatuses = { ...alertCase.workflow.actionStatuses };
+  const workerDispatch = { ...alertCase.workflow.workerDispatch };
+  let stateOverride: CareDemoState | undefined;
+  let escalationFlowVisible = alertCase.workflow.escalationFlowVisible;
+  let decision = "manual operation recorded";
+  let actor = "care-coordinator";
+  let source: AuditLogEntry["source"] = "care_worker";
+
+  if (actionType === "contactPatient") {
+    nextStatus = "contacting";
+    actionStatuses.callPatient =
+      actionStatuses.callPatient === "calling" ? "no_answer" : actionStatuses.callPatient === "no_answer" ? "connected" : "calling";
+    nextPatient.acknowledgementStatus = actionStatuses.callPatient === "connected" ? "acknowledged" : "sent";
+    decision = `patient call attempt status = ${actionStatuses.callPatient}`;
+  } else if (actionType === "sendLowDataConfirmation") {
+    nextStatus = "contacting";
+    actionStatuses.patientCheckPrompt = nextPatient.signalQuality === "offline" ? "retrying" : "sent";
+    nextPatient.acknowledgementStatus = actionStatuses.patientCheckPrompt === "retrying" ? "retrying" : "sent";
+    decision = `low-data safety confirmation ${actionStatuses.patientCheckPrompt}`;
+    actor = "communication-adapter";
+    source = "system";
+  } else if (actionType === "notifyFamily") {
+    actionStatuses.notifyFamily = nextPatient.signalQuality === "weak" || nextPatient.signalQuality === "offline" ? "retrying" : "sent";
+    nextPatient.familyNotified = actionStatuses.notifyFamily === "sent";
+    decision = `family notification ${actionStatuses.notifyFamily}`;
+  } else if (actionType === "escalateEmergency") {
+    nextStatus = "assigned";
+    actionStatuses.emergencyEscalation = "sent";
+    escalationFlowVisible = true;
+    stateOverride = "emergencyEscalated";
+    decision = "119 escalation summary prepared with location, vitals and packet context";
+  } else if (actionType === "markOnTheWay") {
+    nextStatus = "on_the_way";
+    actionStatuses.workerDispatch = "departed";
+    workerDispatch.status = "departed";
+    workerDispatch.departedAt = nowIso();
+    nextPatient.careWorkerDispatched = true;
+    stateOverride = "waitingResponder";
+    decision = "responder marked as departed";
+  } else if (actionType === "markArrived") {
+    nextStatus = "arrived";
+    actionStatuses.workerDispatch = "arrived";
+    workerDispatch.status = "arrived";
+    workerDispatch.arrivedAt = nowIso();
+    nextPatient.careWorkerDispatched = true;
+    stateOverride = "responderArrived";
+    decision = "responder arrived and patient status is being confirmed";
+  } else if (actionType === "resolveCase") {
+    nextStatus = "resolved";
+    nextRisk = {
+      ...alertCase.riskAssessment,
+      riskScore: Math.min(alertCase.riskScore, 24),
+      riskLevel: "stable",
+      reasons: ["事件已解除，保留完整 audit trail 並回到例行監測"],
+      matrix: {
+        ...alertCase.riskAssessment.matrix,
+        totalScore: Math.min(alertCase.riskScore, 24),
+        level: "stable"
+      },
+      communicationStrategy: "事件解除後停止 retry，保留封包與決策紀錄",
+      recommendedAction: "Resolved：事件解除，回到例行監測並安排後續追蹤。",
+      updatedAt: nowIso()
+    };
+    actionStatuses.emergencyEscalation = "resolved";
+    actionStatuses.workerDispatch = actionStatuses.workerDispatch === "idle" ? "resolved" : actionStatuses.workerDispatch;
+    nextPatient.acknowledgementStatus = "acknowledged";
+    nextHelpEvent = {
+      ...nextHelpEvent,
+      active: false,
+      resolvedAt: nowIso()
+    };
+    stateOverride = "resolved";
+    escalationFlowVisible = true;
+    decision = "case resolved and riskScore closed down";
+  } else if (actionType === "noResponseTimeout") {
+    nextStatus = "no_response";
+    nextRisk = calculateRiskScore(nextPatient, nextHelpEvent, { noResponseTimeout: true });
+    actionStatuses.timeout = "timeout";
+    actionStatuses.patientCheckPrompt = "retrying";
+    actionStatuses.notifyFamily = nextPatient.signalQuality === "good" ? "sent" : "retrying";
+    actionStatuses.emergencyEscalation = "sent";
+    nextPatient.acknowledgementStatus = "retrying";
+    nextPatient.familyNotified = actionStatuses.notifyFamily === "sent";
+    stateOverride = "emergencyEscalated";
+    escalationFlowVisible = true;
+    source = "system";
+    actor = "communication-adapter";
+    decision = `no response timeout, riskScore updated to ${nextRisk.riskScore}`;
+  } else if (actionType === "assignCareWorker") {
+    nextStatus = "assigned";
+    actionStatuses.workerDispatch = "confirmed";
   }
 
-  const nextCase: AlertCase = {
-    ...alertCase,
-    status: nextStatus,
-    riskScore: nextRisk.riskScore,
-    riskLevel: nextRisk.riskLevel,
-    priority: priorityFor(nextRisk.riskLevel),
-    riskAssessment: nextRisk,
-    patientStatus: {
-      ...alertCase.patientStatus,
-      familyNotified,
-      careWorkerDispatched,
-      acknowledgementStatus
-    },
-    helpEvent: {
-      ...alertCase.helpEvent,
-      active: actionType === "resolveCase" ? false : alertCase.helpEvent.active,
-      resolvedAt
-    }
-  };
-
-  return appendAuditLog(
+  const nextCase = syncCaseWorkflow(
     {
-      ...nextCase,
-      workflowState: actionType === "escalateEmergency" ? "emergencyEscalated" : determineWorkflowState(nextCase)
+      ...alertCase,
+      status: nextStatus,
+      riskScore: nextRisk.riskScore,
+      riskLevel: nextRisk.riskLevel,
+      priority: priorityFor(nextRisk.riskLevel),
+      riskAssessment: nextRisk,
+      patientStatus: nextPatient,
+      helpEvent: nextHelpEvent,
+      workflow: {
+        ...alertCase.workflow,
+        actionStatuses,
+        workerDispatch
+      }
     },
     {
-      source: actionType === "noResponseTimeout" ? "system" : "care_worker",
-      event: actionType,
-      decision:
-        actionType === "noResponseTimeout"
-          ? `no response timeout, riskScore updated to ${nextRisk.riskScore}`
-          : "manual operation recorded",
-      actor: actionType === "noResponseTimeout" ? "communication-adapter" : "care-coordinator",
-      statusChange: `${alertCase.status} -> ${nextStatus}`
+      state: stateOverride,
+      escalationFlowVisible,
+      actionStatuses,
+      workerDispatch
     }
   );
+
+  let loggedCase = appendAuditLog(nextCase, {
+    source,
+    event: actionType,
+    decision,
+    actor,
+    statusChange: `${alertCase.status} -> ${nextStatus}`
+  });
+
+  if (actionType === "escalateEmergency") {
+    loggedCase = appendAuditLog(loggedCase, {
+      source: "system",
+      event: "emergency_119_summary_prepared",
+      decision: "119 escalation summary prepared for dispatcher handoff",
+      actor: "care-console",
+      statusChange: "workflowState -> emergencyEscalated"
+    });
+  }
+
+  return loggedCase;
 }
 
 function numberFromPayload(payload: Record<string, unknown>, key: string, fallback: number) {
@@ -450,14 +803,18 @@ export function attachLowDataPacket(alertCase: AlertCase, packet: WeakNetworkPac
       connectionPath: packet.connectionPath,
       bufferedPacketCount: packet.bufferedPacketCount,
       packetDelaySeconds: packet.deliveryStatus === "retrying" ? Math.max(alertCase.patientStatus.packetDelaySeconds, 12) : alertCase.patientStatus.packetDelaySeconds
+    },
+    workflow: {
+      ...alertCase.workflow,
+      actionStatuses: {
+        ...alertCase.workflow.actionStatuses,
+        patientCheckPrompt: packet.deliveryStatus === "retrying" ? "retrying" : "sent"
+      }
     }
   };
 
   return appendAuditLog(
-    {
-      ...nextCase,
-      workflowState: determineWorkflowState(nextCase)
-    },
+    syncCaseWorkflow(nextCase),
     {
       source: "system",
       event: "patient_contacted",
@@ -548,6 +905,35 @@ export function generateCareEvent(alertCase: AlertCase, kind?: GeneratedCareEven
     acknowledgementStatus: nextPatient.acknowledgementStatus,
     lastSyncTime: nextPatient.lastSyncTime
   });
+  const actionStatuses: CaseActionStatuses = { ...alertCase.workflow.actionStatuses };
+  const workerDispatch = { ...alertCase.workflow.workerDispatch };
+  let stateOverride: CareDemoState | undefined;
+  let escalationFlowVisible = alertCase.workflow.escalationFlowVisible;
+
+  if (selectedKind === "no_response") {
+    actionStatuses.timeout = "timeout";
+    actionStatuses.patientCheckPrompt = "retrying";
+    actionStatuses.notifyFamily = nextPatient.signalQuality === "good" ? "sent" : "retrying";
+    actionStatuses.emergencyEscalation = "sent";
+    stateOverride = "emergencyEscalated";
+    escalationFlowVisible = true;
+  } else if (selectedKind === "worker_arrived") {
+    actionStatuses.workerDispatch = "arrived";
+    workerDispatch.status = "arrived";
+    workerDispatch.arrivedAt = nowIso();
+    stateOverride = "responderArrived";
+    escalationFlowVisible = true;
+  } else if (selectedKind === "patient_safe") {
+    actionStatuses.patientCheckPrompt = "confirmed";
+  } else if (selectedKind === "bedside_pressed") {
+    escalationFlowVisible = true;
+  } else if (["spo2_drop", "activity_drop", "packet_delay"].includes(selectedKind)) {
+    escalationFlowVisible =
+      nextRisk.riskScore >= 90 ||
+      (nextHelpEvent.active && nextHelpEvent.source === "bedside_button") ||
+      nextPatient.bedsideButtonStatus === "pressed";
+  }
+
   const nextCase = {
     ...alertCase,
     status: nextStatus,
@@ -557,14 +943,16 @@ export function generateCareEvent(alertCase: AlertCase, kind?: GeneratedCareEven
     patientStatus: nextPatient,
     helpEvent: nextHelpEvent,
     riskAssessment: nextRisk,
-    lowDataPacket: nextPacket
+    lowDataPacket: nextPacket,
+    workflow: {
+      ...alertCase.workflow,
+      actionStatuses,
+      workerDispatch
+    }
   };
 
   return appendAuditLog(
-    {
-      ...nextCase,
-      workflowState: determineWorkflowState(nextCase)
-    },
+    syncCaseWorkflow(nextCase, { state: stateOverride, escalationFlowVisible, actionStatuses, workerDispatch }),
     {
       source: selectedKind === "patient_safe" ? "patient" : selectedKind === "worker_arrived" ? "care_worker" : "system",
       event,

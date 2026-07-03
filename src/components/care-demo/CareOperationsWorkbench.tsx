@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   Clock3,
@@ -23,9 +23,18 @@ import {
   generateCareEvent,
   operationRiskLabel,
   advanceCareWorkflow,
+  refreshCaseWorkflow,
   simulateWeakNetworkPacket
 } from "../../lib/careOperationsEngine";
-import type { AlertCase, CareWorker, CareWorkflowAction, GeneratedCareEventKind, OperationRiskLevel } from "../../types/careOperations";
+import type {
+  AlertCase,
+  CareWorker,
+  CareWorkflowAction,
+  EmergencyFlowStatus,
+  GeneratedCareEventKind,
+  OperationRiskLevel,
+  Patient
+} from "../../types/careOperations";
 
 function classNames(...tokens: Array<string | false | undefined>) {
   return tokens.filter(Boolean).join(" ");
@@ -37,22 +46,101 @@ function buildInitialAlertCases() {
       const helpEvent = operationsHelpEvents[patient.patientId];
       const risk = calculateRiskScore(patient, helpEvent);
       const alertCase = createAlertCase(patient, risk, helpEvent);
-      return {
+      const criticalPacket = risk.riskLevel === "critical" || helpEvent.source === "bedside_button";
+      return refreshCaseWorkflow({
         ...alertCase,
         lowDataPacket: simulateWeakNetworkPacket({
-          type: helpEvent.active ? "HELP_EVENT" : "TELEMETRY_EVENT",
+          type: criticalPacket ? "HELP_EVENT" : "TELEMETRY_EVENT",
           eventId: alertCase.eventId,
           patientId: patient.patientId,
-          helpEventActive: helpEvent.active,
+          helpEventActive: criticalPacket,
           connectionPath: patient.connectionPath,
           retryCount: patient.connectionPath === "LTE fallback" ? 1 : patient.connectionPath === "buffered offline" ? 3 : 0,
           bufferedPacketCount: patient.bufferedPacketCount,
           acknowledgementStatus: patient.acknowledgementStatus,
           lastSyncTime: patient.lastSyncTime
         })
-      };
+      });
     })
     .sort((a, b) => b.riskScore - a.riskScore);
+}
+
+const severityByLevel: Record<OperationRiskLevel, Patient["severity"]> = {
+  critical: "Critical",
+  warning: "Warning",
+  watch: "Watch",
+  stable: "Stable"
+};
+
+function patientHelpSource(source: AlertCase["source"]): NonNullable<Patient["helpEvent"]>["source"] {
+  if (source === "bedside_button") return "bedside_button";
+  if (source === "system_prediction") return "system_prediction";
+  return "bracelet";
+}
+
+function locationFromStatus(locationStatus: string): NonNullable<Patient["location"]> {
+  const confidenceMatch = locationStatus.match(/confidence\s+(\d+)/i);
+  const source: NonNullable<Patient["location"]>["source"] =
+    /GPS/i.test(locationStatus) && /gateway|beacon|indoor/i.test(locationStatus)
+      ? "hybrid"
+      : /GPS/i.test(locationStatus)
+        ? "GPS"
+        : "indoor";
+
+  return {
+    label: locationStatus,
+    confidence: confidenceMatch ? Number(confidenceMatch[1]) : source === "GPS" ? 82 : source === "hybrid" ? 76 : 88,
+    source
+  };
+}
+
+function patientFromAlertCase(alertCase: AlertCase): Patient {
+  const matrix = alertCase.riskAssessment.matrix;
+  const packet = alertCase.lowDataPacket;
+
+  return {
+    id: alertCase.patientId,
+    name: alertCase.patientStatus.codeName,
+    room: alertCase.patientId,
+    severity: severityByLevel[alertCase.riskLevel],
+    riskScore: alertCase.riskScore,
+    hr: alertCase.patientStatus.hr,
+    spo2: alertCase.patientStatus.spo2,
+    motionState: alertCase.patientStatus.motionState,
+    activityDropPercent: alertCase.patientStatus.activityDropPercent,
+    signalQuality: alertCase.patientStatus.signalQuality,
+    connectionPath: alertCase.patientStatus.connectionPath,
+    workflowState: alertCase.workflowState,
+    lastSyncTime: alertCase.patientStatus.lastSyncTime,
+    helpEvent: {
+      active: alertCase.helpEvent.active,
+      source: patientHelpSource(alertCase.helpEvent.source),
+      createdAt: alertCase.helpEvent.createdAt
+    },
+    packet: packet
+      ? {
+          id: packet.packetId,
+          delaySeconds: alertCase.patientStatus.packetDelaySeconds,
+          bufferedCount: packet.bufferedPacketCount,
+          payloadSizeKb: packet.payloadSizeKb,
+          acknowledgementStatus: packet.acknowledgementStatus
+        }
+      : {
+          id: "not generated",
+          delaySeconds: alertCase.patientStatus.packetDelaySeconds,
+          bufferedCount: alertCase.patientStatus.bufferedPacketCount,
+          payloadSizeKb: 0,
+          acknowledgementStatus: alertCase.patientStatus.acknowledgementStatus
+        },
+    location: locationFromStatus(alertCase.patientStatus.locationStatus),
+    riskBreakdown: [
+      { label: "生理風險", points: matrix.physiologicalRisk, description: "HR / SpO2 生命徵象加權" },
+      { label: "活動風險", points: matrix.activityRisk, description: "活動下降與 motionState 加權" },
+      { label: "求助事件", points: matrix.helpEventRisk, description: "helpEvent / bedside pressed 狀態" },
+      { label: "通訊風險", points: matrix.communicationRisk, description: "signalQuality、packet delay、buffered packets" },
+      { label: "加總分數", points: matrix.totalScore, description: operationRiskLabel[matrix.level] }
+    ]
+  };
 }
 
 function formatSla(seconds: number) {
@@ -84,6 +172,19 @@ function levelTone(level: OperationRiskLevel) {
   if (level === "warning") return "warning";
   if (level === "watch") return "watch";
   return "stable";
+}
+
+function isEmergencyStatus(status: EmergencyFlowStatus | string) {
+  return ["active", "sent", "retrying", "confirmed", "resolved"].includes(status);
+}
+
+function compactActionStatus(status: string) {
+  if (status === "idle") return "pending";
+  if (status === "connected") return "confirmed";
+  if (status === "departed") return "sent";
+  if (status === "arrived") return "confirmed";
+  if (status === "timeout") return "retrying";
+  return status;
 }
 
 function CareKpis({
@@ -125,12 +226,12 @@ function CareKpis({
 
 function AlertQueue({
   alertCases,
-  selectedEventId,
+  selectedPatientId,
   onSelect
 }: {
   alertCases: AlertCase[];
-  selectedEventId: string;
-  onSelect: (eventId: string) => void;
+  selectedPatientId: string;
+  onSelect: (patientId: string) => void;
 }) {
   const activeCases = alertCases.filter((item) => item.status !== "resolved");
   const resolvedCases = alertCases.filter((item) => item.status === "resolved");
@@ -145,54 +246,70 @@ function AlertQueue({
         <em>{alertCases.length} 位</em>
       </header>
       <div className="ops-alert-list">
-        {activeCases.map((alertCase) => (
-          <button
-            key={alertCase.eventId}
-            type="button"
-            className={classNames(
-              "ops-alert-card",
-              selectedEventId === alertCase.eventId && "is-active",
-              alertCase.riskLevel === "critical" && "has-alert",
-              `risk-${levelTone(alertCase.riskLevel)}`
-            )}
-            onClick={() => onSelect(alertCase.eventId)}
-          >
-            <div className="alert-card-head">
-              <b>{alertCase.patientStatus.codeName} / {alertCase.patientId}</b>
-              <span>{operationRiskLabel[alertCase.riskLevel]}</span>
-              <strong>{alertCase.riskScore}</strong>
-            </div>
-            <dl>
-              <div>
-                <dt>hr</dt>
-                <dd>{alertCase.patientStatus.hr} bpm</dd>
+        {activeCases.map((alertCase) => {
+          const selected = selectedPatientId === alertCase.patientId;
+
+          return (
+            <button
+              key={alertCase.eventId}
+              type="button"
+              className={classNames(
+                "ops-alert-card",
+                selected && "is-active",
+                alertCase.riskLevel === "critical" && "has-alert",
+                `risk-${levelTone(alertCase.riskLevel)}`
+              )}
+              onClick={() => onSelect(alertCase.patientId)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(alertCase.patientId);
+                }
+              }}
+              aria-pressed={selected}
+              aria-current={selected ? "true" : undefined}
+            >
+              <div className="alert-card-head">
+                <b>{alertCase.patientStatus.codeName} / {alertCase.patientId}</b>
+                <span>{operationRiskLabel[alertCase.riskLevel]}</span>
+                <strong>{alertCase.riskScore}</strong>
               </div>
-              <div>
-                <dt>SpO2</dt>
-                <dd>{alertCase.patientStatus.spo2}%</dd>
-              </div>
-              <div>
-                <dt>signal</dt>
-                <dd>{alertCase.patientStatus.signalQuality}</dd>
-              </div>
-            </dl>
-            <ul>
-              {[alertCase.patientStatus.motionState, sourceLabel(alertCase.source), `SLA ${formatSla(alertCase.slaSecondsRemaining)}`].map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-            {alertCase.riskLevel === "critical" || alertCase.helpEvent.active ? (
-              <small className="alert-badge-line">Alert: {triggerReasons(alertCase)[0]}</small>
-            ) : null}
-            <small>最後回報 {alertCase.patientStatus.lastSyncTime.replace("T", " ").slice(0, 19)}</small>
-          </button>
-        ))}
+              <small className={classNames("viewing-indicator", selected && "is-visible")}>
+                <i aria-hidden="true" />
+                {selected ? "正在查看" : "可切換查看"}
+              </small>
+              <dl>
+                <div>
+                  <dt>hr</dt>
+                  <dd>{alertCase.patientStatus.hr} bpm</dd>
+                </div>
+                <div>
+                  <dt>SpO2</dt>
+                  <dd>{alertCase.patientStatus.spo2}%</dd>
+                </div>
+                <div>
+                  <dt>signal</dt>
+                  <dd>{alertCase.patientStatus.signalQuality}</dd>
+                </div>
+              </dl>
+              <ul>
+                {[alertCase.patientStatus.motionState, sourceLabel(alertCase.source), `SLA ${formatSla(alertCase.slaSecondsRemaining)}`].map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+              {alertCase.riskLevel === "critical" || alertCase.helpEvent.source === "bedside_button" ? (
+                <small className="alert-badge-line">Alert: {triggerReasons(alertCase)[0]}</small>
+              ) : null}
+              <small>最後回報 {alertCase.patientStatus.lastSyncTime.replace("T", " ").slice(0, 19)}</small>
+            </button>
+          );
+        })}
       </div>
       <div className="resolved-queue">
         <span>已完成事件</span>
         {resolvedCases.length ? (
           resolvedCases.map((item) => (
-            <button key={item.eventId} type="button" onClick={() => onSelect(item.eventId)}>
+            <button key={item.eventId} type="button" onClick={() => onSelect(item.patientId)}>
               {item.patientId} / resolved
             </button>
           ))
@@ -206,59 +323,68 @@ function AlertQueue({
 
 function PatientStatusPanel({
   alertCase,
+  selectedPatient,
   assignedWorker
 }: {
   alertCase: AlertCase;
+  selectedPatient: Patient;
   assignedWorker?: CareWorker;
 }) {
   const patient = alertCase.patientStatus;
+  const helpEventLabel = selectedPatient.helpEvent?.active
+    ? `${selectedPatient.helpEvent.source ?? sourceLabel(alertCase.source)} active`
+    : "inactive";
   const statusRows = [
-    ["hr", `${patient.hr} bpm`],
-    ["spo2", `${patient.spo2}%`],
-    ["活動下降", `${patient.activityDropPercent}%`],
-    ["GPS / 室內位置", patient.locationStatus],
-    ["motionState", patient.motionState],
-    ["signalQuality", patient.signalQuality],
+    ["hr", `${selectedPatient.hr} bpm`],
+    ["spo2", `${selectedPatient.spo2}%`],
+    ["活動下降", `${selectedPatient.activityDropPercent}%`],
+    ["GPS / 室內位置", selectedPatient.location?.label ?? patient.locationStatus],
+    ["location confidence", `${selectedPatient.location?.confidence ?? "--"} / ${selectedPatient.location?.source ?? "hybrid"}`],
+    ["motionState", selectedPatient.motionState],
+    ["signalQuality", selectedPatient.signalQuality],
+    ["helpEvent", helpEventLabel],
     ["是否佩戴手環", patient.wearableStatus],
     ["是否按下床邊呼叫器", patient.bedsideButtonStatus],
-    ["connectionPath", patient.connectionPath],
-    ["packet delay", `${patient.packetDelaySeconds}s / ${patient.bufferedPacketCount} buffered`],
-    ["acknowledgementStatus", patient.acknowledgementStatus],
+    ["connectionPath", selectedPatient.connectionPath],
+    ["packet delay", `${selectedPatient.packet?.delaySeconds ?? patient.packetDelaySeconds}s / ${selectedPatient.packet?.bufferedCount ?? patient.bufferedPacketCount} buffered`],
+    ["acknowledgementStatus", selectedPatient.packet?.acknowledgementStatus ?? patient.acknowledgementStatus],
     ["是否已通知家屬", patient.familyNotified ? "yes" : "no"],
     ["是否已派遣居服員", assignedWorker ? `${assignedWorker.name} / ${assignedWorker.workerId}` : "no"]
   ];
-  const matrixRows = [
-    ["生理風險", alertCase.riskAssessment.matrix.physiologicalRisk],
-    ["活動風險", alertCase.riskAssessment.matrix.activityRisk],
-    ["求助事件", alertCase.riskAssessment.matrix.helpEventRisk],
-    ["通訊風險", alertCase.riskAssessment.matrix.communicationRisk],
-    ["加總分數", alertCase.riskAssessment.matrix.totalScore],
-    ["判定等級", operationRiskLabel[alertCase.riskAssessment.matrix.level]]
-  ];
+  const matrixRows = selectedPatient.riskBreakdown.map((item) => [
+    item.label,
+    item.label === "加總分數" ? `${item.points} / ${item.description}` : item.points
+  ]);
+  const assessmentTitle = `為什麼被判定為 ${selectedPatient.severity}`;
+  const offlineNotice =
+    selectedPatient.signalQuality === "offline"
+      ? "資料品質不足：目前無法完整判讀即時狀態，需等待 buffered packets 補送或由照護端人工確認。"
+      : null;
 
   return (
     <section className="ops-panel patient-status-panel" aria-label="個案即時狀態面板">
       <header>
         <div>
           <span>Patient Live Status</span>
-          <strong>{patient.patientId} / {patient.codeName}</strong>
+          <strong>{selectedPatient.room} / {selectedPatient.name}</strong>
         </div>
         <b className={`risk-badge risk-${levelTone(alertCase.riskLevel)}`}>{operationRiskLabel[alertCase.riskLevel]}</b>
       </header>
       <div className="care-live-summary">
         <article>
           <span>riskScore</span>
-          <strong>{alertCase.riskScore}</strong>
+          <strong>{selectedPatient.riskScore}</strong>
         </article>
         <article>
           <span>workflowState</span>
-          <strong>{alertCase.workflowState}</strong>
+          <strong>{selectedPatient.workflowState}</strong>
         </article>
         <article>
           <span>lastSyncTime</span>
-          <strong>{patient.lastSyncTime.replace("T", " ").slice(11, 19)}</strong>
+          <strong>{selectedPatient.lastSyncTime.replace("T", " ").slice(11, 19)}</strong>
         </article>
       </div>
+      {offlineNotice ? <p className="data-quality-warning">{offlineNotice}</p> : null}
       <div className="patient-status-grid">
         {statusRows.map(([label, value]) => (
           <article key={label}>
@@ -276,7 +402,7 @@ function PatientStatusPanel({
         ))}
       </div>
       <div className="risk-calculation-card">
-        <span>{alertCase.riskLevel === "critical" ? "為什麼被判定為 Critical" : "Risk Assessment"}</span>
+        <span>{assessmentTitle}</span>
         <strong>{alertCase.riskAssessment.recommendedAction}</strong>
         <ul>
           {alertCase.riskAssessment.reasons.map((reason) => (
@@ -289,56 +415,187 @@ function PatientStatusPanel({
   );
 }
 
-function EvidenceTimeline({ alertCase }: { alertCase: AlertCase }) {
+function FlowStatusMark({ status }: { status: EmergencyFlowStatus }) {
+  if (status === "confirmed" || status === "resolved") {
+    return (
+      <i className="flow-status-mark is-complete" aria-label={status}>
+        <CheckCircle2 size={13} />
+      </i>
+    );
+  }
+  if (status === "retrying") return <i className="flow-status-mark is-retrying" aria-label="retrying" />;
+  if (status === "active") return <i className="flow-status-mark is-active" aria-label="active" />;
+  return <i className={`flow-status-mark is-${status}`} aria-label={status} />;
+}
+
+function EmergencyEscalationFlowPanel({
+  alertCase,
+  selectedPatient,
+  assignedWorker,
+  expanded,
+  lockedOpen,
+  onToggle
+}: {
+  alertCase: AlertCase;
+  selectedPatient: Patient;
+  assignedWorker?: CareWorker;
+  expanded: boolean;
+  lockedOpen: boolean;
+  onToggle: () => void;
+}) {
+  const flow = alertCase.workflow.escalationFlow;
+  const activeCount = flow.filter((node) => isEmergencyStatus(node.status)).length;
+  const standbyCopy =
+    selectedPatient.severity === "Warning"
+      ? "Warning：建議電話確認、持續監測與通知照護人員預備；119 流程維持 standby。"
+      : selectedPatient.severity === "Watch"
+        ? "Watch：以低強度追蹤、重新同步資料與確認訊號品質為主；不啟動 Critical escalation。"
+        : selectedPatient.signalQuality === "offline"
+          ? "Signal offline：資料品質不足，等待補送或人工確認；除非有床邊 SOS 或高風險條件，不自動升級 119。"
+          : "Stable：一般監測中；119 escalation path 保持待命。";
+  const emergencySummary = [
+    ["患者", `${selectedPatient.name} / ${selectedPatient.room}`],
+    ["位置", selectedPatient.location?.label ?? alertCase.patientStatus.locationStatus],
+    ["生命徵象", `HR ${selectedPatient.hr} bpm / SpO2 ${selectedPatient.spo2}%`],
+    ["活動狀態", `${selectedPatient.motionState} / activityDrop ${selectedPatient.activityDropPercent}%`],
+    ["封包", `${selectedPatient.packet?.id ?? "pending"} / ${selectedPatient.connectionPath}`],
+    ["照護資源", assignedWorker ? `${assignedWorker.name} / ${assignedWorker.distanceKm.toFixed(1)}km` : "尚未指派"]
+  ];
+
   return (
-    <section className="ops-panel evidence-timeline" aria-label="Evidence Timeline">
+    <section className={classNames("ops-panel emergency-flow-panel", expanded && "is-expanded")} aria-label="119 Emergency Escalation Flow">
       <header>
         <div>
-          <span>Evidence Timeline</span>
-          <strong>事件時間軸</strong>
+          <span>119 Emergency Escalation Flow</span>
+          <strong>119 緊急升級流程</strong>
         </div>
-        <em>{alertCase.timeline.length} logs</em>
+        <button type="button" aria-expanded={expanded} onClick={onToggle} disabled={lockedOpen && expanded}>
+          {lockedOpen && expanded ? "自動展開" : expanded ? "收合" : "展開"} / {activeCount}
+        </button>
+      </header>
+
+      {expanded ? (
+        <>
+          <ol className="emergency-flow-timeline">
+            {flow.map((node, index) => (
+              <li key={node.id} className={`status-${node.status}`}>
+                <div className="flow-rail">
+                  <FlowStatusMark status={node.status} />
+                  {index < flow.length - 1 ? <span aria-hidden="true" /> : null}
+                </div>
+                <article>
+                  <div className="flow-node-head">
+                    <b>{node.label}</b>
+                    <small>{node.status}</small>
+                  </div>
+                  <p>{node.detail}</p>
+                  <dl>
+                    {node.meta.map((item) => (
+                      <div key={`${node.id}-${item.label}`}>
+                        <dt>{item.label}</dt>
+                        <dd>{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </article>
+              </li>
+            ))}
+          </ol>
+          <div className="emergency-summary-card">
+            <span>可提供給 119 的摘要資訊</span>
+            <dl>
+              {emergencySummary.map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </>
+      ) : (
+        <p className="emergency-flow-collapsed">{selectedPatient.severity === "Critical" ? "Critical 條件或手動升級後會自動展開，並顯示封包、通知、派遣與回寫狀態。" : standbyCopy}</p>
+      )}
+    </section>
+  );
+}
+
+function CaseEventLog({ alertCase }: { alertCase: AlertCase }) {
+  const events = alertCase.workflow.eventLog.slice(-8).reverse();
+
+  return (
+    <section className="ops-panel case-event-log" aria-label="Case Event Log">
+      <header>
+        <div>
+          <span>Case Event Log</span>
+          <strong>最近事件</strong>
+        </div>
+        <em>{events.length} / {alertCase.timeline.length}</em>
       </header>
       <ol>
-        {alertCase.timeline.map((entry) => (
-          <li key={entry.id}>
-            <time>{entry.timestamp.slice(11, 19)}</time>
-            <div>
-              <b>{entry.event}</b>
-              <span>{entry.source} / {entry.actor}</span>
-              <p>{entry.decision}</p>
-              {entry.statusChange ? <small>{entry.statusChange}</small> : null}
-            </div>
-          </li>
-        ))}
+        {events.map((entry) => {
+          const isCritical = /critical|emergency|119|timeout|no_response|escalate/i.test(entry.event);
+
+          return (
+            <li key={entry.id} className={isCritical ? "is-critical" : ""}>
+              <time>{entry.timestamp.slice(11, 19)}</time>
+              <div>
+                <span className="event-log-source">
+                  <i />
+                  <b>{entry.event}</b>
+                  {isCritical ? <small>Critical</small> : null}
+                </span>
+                <span>{entry.source} / {entry.actor}</span>
+                <p>{entry.decision}</p>
+                {entry.statusChange ? <small>{entry.statusChange}</small> : null}
+              </div>
+            </li>
+          );
+        })}
       </ol>
     </section>
   );
 }
 
-function PacketStatusCard({ alertCase }: { alertCase: AlertCase }) {
+function PacketStatusCard({ alertCase, selectedPatient }: { alertCase: AlertCase; selectedPatient: Patient }) {
   const packet = alertCase.lowDataPacket;
+  const packetLabel =
+    selectedPatient.severity === "Critical" && packet?.priority === "critical"
+      ? "Critical helpEvent 優先"
+      : selectedPatient.signalQuality === "offline"
+        ? "Buffered telemetry / 補送中"
+        : selectedPatient.severity === "Warning"
+          ? "Warning safety check"
+          : selectedPatient.severity === "Watch"
+            ? "Watch telemetry"
+            : "Routine telemetry";
+  const packetCopy =
+    selectedPatient.severity === "Critical"
+      ? "helpEvent 封包保留 eventId；斷線先寫入 buffer，恢復連線後補送，收到照護端 ack 才停止 retry。"
+      : selectedPatient.signalQuality === "offline"
+        ? "目前訊號離線，先保留 buffered packets 與 lastSyncTime；補送完成或人工確認前不直接進入 119 流程。"
+        : "一般 telemetry 依照 selectedPatient 的 signalQuality、packet delay 與 acknowledgementStatus 更新。";
   const rows = packet
     ? [
         ["packet id", packet.packetId],
         ["payload size", `${packet.payloadSizeKb.toFixed(1)} KB`],
-        ["connection path", packet.connectionPath],
+        ["connection path", selectedPatient.connectionPath],
         ["retry count", String(packet.retryCount)],
-        ["buffered count", String(packet.bufferedPacketCount)],
-        ["ack status", packet.acknowledgementStatus],
-        ["last sync", packet.lastSyncTime.replace("T", " ").slice(0, 19)]
+        ["buffered count", String(selectedPatient.packet?.bufferedCount ?? packet.bufferedPacketCount)],
+        ["ack status", selectedPatient.packet?.acknowledgementStatus ?? packet.acknowledgementStatus],
+        ["last sync", selectedPatient.lastSyncTime.replace("T", " ").slice(0, 19)]
       ]
     : [
         ["packet id", "not generated"],
-        ["connection path", alertCase.patientStatus.connectionPath],
-        ["ack status", alertCase.patientStatus.acknowledgementStatus]
+        ["connection path", selectedPatient.connectionPath],
+        ["ack status", selectedPatient.packet?.acknowledgementStatus ?? alertCase.patientStatus.acknowledgementStatus]
       ];
 
   return (
     <article className="packet-status-card" aria-label="封包傳輸狀態">
       <header>
         <span>Packet Delivery</span>
-        <b>{packet?.priority === "critical" ? "Critical helpEvent 優先" : "Telemetry"}</b>
+        <b>{packetLabel}</b>
       </header>
       <dl>
         {rows.map(([label, value]) => (
@@ -348,13 +605,14 @@ function PacketStatusCard({ alertCase }: { alertCase: AlertCase }) {
           </div>
         ))}
       </dl>
-      <p>helpEvent 封包保留 eventId；斷線先寫入 buffer，恢復連線後補送，收到照護端 ack 才停止 retry。</p>
+      <p>{packetCopy}</p>
     </article>
   );
 }
 
 function ActionPanel({
   alertCase,
+  selectedPatient,
   careWorkers,
   assignedWorker,
   onAssign,
@@ -364,6 +622,7 @@ function ActionPanel({
   onGenerateEvent
 }: {
   alertCase: AlertCase;
+  selectedPatient: Patient;
   careWorkers: CareWorker[];
   assignedWorker?: CareWorker;
   onAssign: () => void;
@@ -373,13 +632,54 @@ function ActionPanel({
   onGenerateEvent: (kind?: GeneratedCareEventKind) => void;
 }) {
   const disabled = alertCase.status === "resolved";
-  const recommendedSteps = [
-    { label: "先語音確認", status: alertCase.status === "contacting" ? "sent" : alertCase.patientStatus.acknowledgementStatus === "acknowledged" ? "acknowledged" : "pending" },
-    { label: "發送簡訊 / App 推播", status: alertCase.lowDataPacket?.deliveryStatus === "retrying" ? "retrying" : alertCase.lowDataPacket ? "sent" : "pending" },
-    { label: "通知家屬", status: alertCase.patientStatus.familyNotified ? "sent" : alertCase.riskLevel === "critical" ? "pending" : "pending" },
-    { label: "通知居服員", status: alertCase.assignedCareWorkerId ? "acknowledged" : alertCase.riskLevel === "critical" ? "pending" : "pending" },
-    { label: "升級 119 展示流程", status: alertCase.workflowState === "emergencyEscalated" ? "sent" : alertCase.status === "no_response" ? "retrying" : "pending" }
-  ];
+  const actionStatuses = alertCase.workflow.actionStatuses;
+  const showEmergencyAction =
+    selectedPatient.severity === "Critical" ||
+    alertCase.helpEvent.source === "bedside_button" ||
+    actionStatuses.emergencyEscalation !== "idle";
+  const emergencyActionStatus =
+    actionStatuses.emergencyEscalation !== "idle"
+      ? compactActionStatus(actionStatuses.emergencyEscalation)
+      : alertCase.workflowState === "resolved"
+        ? "resolved"
+        : ["waitingResponder", "responderArrived"].includes(alertCase.workflowState)
+          ? "confirmed"
+          : alertCase.workflowState === "emergencyEscalated"
+            ? "active"
+            : "pending";
+  const recommendedSteps =
+    selectedPatient.severity === "Critical"
+      ? [
+          { label: "先語音確認", status: compactActionStatus(actionStatuses.callPatient) },
+          { label: "發送簡訊 / App 推播", status: compactActionStatus(actionStatuses.patientCheckPrompt) },
+          { label: "通知家屬", status: compactActionStatus(actionStatuses.notifyFamily) },
+          { label: "通知居服員", status: compactActionStatus(actionStatuses.workerDispatch) },
+          { label: "升級 119 展示流程", status: emergencyActionStatus }
+        ]
+      : selectedPatient.severity === "Warning"
+        ? [
+            { label: "建議電話確認", status: compactActionStatus(actionStatuses.callPatient) },
+            { label: "發送低資料量確認", status: compactActionStatus(actionStatuses.patientCheckPrompt) },
+            { label: "通知照護人員預備", status: compactActionStatus(actionStatuses.workerDispatch) },
+            { label: "持續監測", status: "active" }
+          ]
+        : selectedPatient.severity === "Watch"
+          ? [
+              { label: "低強度追蹤", status: "active" },
+              { label: "重新同步資料", status: selectedPatient.signalQuality === "weak" || selectedPatient.signalQuality === "offline" ? "retrying" : "pending" },
+              { label: "確認訊號品質", status: selectedPatient.signalQuality === "good" ? "confirmed" : "pending" }
+            ]
+          : selectedPatient.signalQuality === "offline"
+            ? [
+                { label: "資料品質不足", status: "retrying" },
+                { label: "補送 buffered packets", status: "retrying" },
+                { label: "人工確認同步狀態", status: "pending" }
+              ]
+            : [
+                { label: "一般監測中", status: "confirmed" },
+                { label: "下一輪例行同步", status: "pending" },
+                { label: "保留狀態紀錄", status: "confirmed" }
+              ];
   const quickReplies = [
     { code: 1 as const, label: "請按一下確認安全", helper: "回覆後 acknowledgementStatus = acknowledged" },
     { code: 3 as const, label: "請按兩下表示需要協助", helper: "回覆後維持派工流程" },
@@ -433,10 +733,12 @@ function ActionPanel({
           <Users size={15} />
           通知家屬
         </button>
-        <button type="button" className="danger" onClick={() => onAdvance("escalateEmergency")} disabled={disabled}>
-          <Siren size={15} />
-          升級 119 / 緊急醫療
-        </button>
+        {showEmergencyAction ? (
+          <button type="button" className="danger" onClick={() => onAdvance("escalateEmergency")} disabled={disabled}>
+            <Siren size={15} />
+            升級 119 / 緊急醫療
+          </button>
+        ) : null}
         <button type="button" onClick={() => onAdvance("markOnTheWay")} disabled={disabled}>
           <Route size={15} />
           標記居服員已出發
@@ -455,7 +757,7 @@ function ActionPanel({
         </button>
       </div>
 
-      <PacketStatusCard alertCase={alertCase} />
+      <PacketStatusCard alertCase={alertCase} selectedPatient={selectedPatient} />
 
       <div className="demo-event-generator">
         <span>Demo Event Generator</span>
@@ -497,11 +799,7 @@ export function CareOperationsWorkbench({
     alertCases[0]?.eventId ??
     "";
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
-  const selectedCase = alertCases.find((item) => item.eventId === selectedEventId) ?? alertCases[0];
-  const assignedWorker = selectedCase?.assignedCareWorkerId
-    ? careWorkers.find((worker) => worker.workerId === selectedCase.assignedCareWorkerId)
-    : undefined;
-
+  const [flowPanelOpenByEvent, setFlowPanelOpenByEvent] = useState<Record<string, boolean>>({});
   const sortedAlertCases = useMemo(
     () =>
       alertCases.slice().sort((a, b) => {
@@ -511,8 +809,28 @@ export function CareOperationsWorkbench({
       }),
     [alertCases]
   );
+  const patients: Patient[] = useMemo(() => alertCases.map(patientFromAlertCase), [alertCases]);
+  const selectedPatient = useMemo(
+    () => patients.find((patient) => patient.id === selectedPatientId) ?? patients[0],
+    [patients, selectedPatientId]
+  );
+  const selectedCase =
+    alertCases.find((item) => item.patientId === selectedPatient?.id) ??
+    alertCases.find((item) => item.eventId === selectedEventId) ??
+    alertCases[0];
+  const assignedWorker = selectedCase?.assignedCareWorkerId
+    ? careWorkers.find((worker) => worker.workerId === selectedCase.assignedCareWorkerId)
+    : undefined;
 
-  if (!selectedCase) return null;
+  useEffect(() => {
+    const nextCase = alertCases.find((item) => item.patientId === selectedPatient?.id);
+    if (nextCase && nextCase.eventId !== selectedEventId) setSelectedEventId(nextCase.eventId);
+  }, [alertCases, selectedEventId, selectedPatient?.id]);
+
+  if (!selectedCase || !selectedPatient) return null;
+
+  const emergencyFlowLockedOpen = selectedCase.workflow.escalationFlowVisible;
+  const emergencyFlowExpanded = emergencyFlowLockedOpen || Boolean(flowPanelOpenByEvent[selectedCase.eventId]);
 
   function replaceCase(nextCase: AlertCase) {
     setAlertCases((items) => items.map((item) => (item.eventId === nextCase.eventId ? nextCase : item)));
@@ -520,10 +838,10 @@ export function CareOperationsWorkbench({
     onSelectPatient(nextCase.patientId);
   }
 
-  function selectCase(eventId: string) {
-    const nextCase = alertCases.find((item) => item.eventId === eventId);
+  function selectCase(patientId: string) {
+    const nextCase = alertCases.find((item) => item.patientId === patientId);
     if (!nextCase) return;
-    setSelectedEventId(eventId);
+    setSelectedEventId(nextCase.eventId);
     onSelectPatient(nextCase.patientId);
   }
 
@@ -561,21 +879,40 @@ export function CareOperationsWorkbench({
     replaceCase(generateCareEvent(selectedCase, kind));
   }
 
+  function toggleEmergencyFlow() {
+    if (selectedCase.workflow.escalationFlowVisible) return;
+    setFlowPanelOpenByEvent((items) => ({
+      ...items,
+      [selectedCase.eventId]: !items[selectedCase.eventId]
+    }));
+  }
+
   return (
     <section className="care-operations-workbench" aria-label="居服員與守望隊照護工作台">
       <div className="ops-safety-note">
         <ShieldAlert size={18} />
         <p>
-          核心價值：透析返家後仍能監測；求助事件與生理異常由風險矩陣加權；Critical helpEvent 以低丟包策略優先送達照護端。riskScore 僅為展示排序。
+          核心價值：透析返家後仍能監測；求助事件與生理異常由風險矩陣加權；高優先級 helpEvent 以低丟包策略優先送達照護端。riskScore 僅為展示排序。
         </p>
       </div>
       <CareKpis alertCases={alertCases} careWorkers={careWorkers} />
       <div className="care-ops-grid">
-        <AlertQueue alertCases={sortedAlertCases} selectedEventId={selectedCase.eventId} onSelect={selectCase} />
-        <PatientStatusPanel alertCase={selectedCase} assignedWorker={assignedWorker} />
+        <AlertQueue alertCases={sortedAlertCases} selectedPatientId={selectedPatient.id} onSelect={selectCase} />
+        <div className="ops-center-stack">
+          <PatientStatusPanel alertCase={selectedCase} selectedPatient={selectedPatient} assignedWorker={assignedWorker} />
+          <EmergencyEscalationFlowPanel
+            alertCase={selectedCase}
+            selectedPatient={selectedPatient}
+            assignedWorker={assignedWorker}
+            expanded={emergencyFlowExpanded}
+            lockedOpen={emergencyFlowLockedOpen}
+            onToggle={toggleEmergencyFlow}
+          />
+        </div>
         <div className="ops-right-stack">
           <ActionPanel
             alertCase={selectedCase}
+            selectedPatient={selectedPatient}
             careWorkers={careWorkers}
             assignedWorker={assignedWorker}
             onAssign={handleAssign}
@@ -584,23 +921,18 @@ export function CareOperationsWorkbench({
             onReply={handleReply}
             onGenerateEvent={handleGenerateEvent}
           />
-          <EvidenceTimeline alertCase={selectedCase} />
+          <CaseEventLog alertCase={selectedCase} />
         </div>
       </div>
       <div className="state-machine-strip" aria-label="care workflow state machine">
         {[
-          "idle",
-          "monitoring",
-          "anomalyDetected",
-          "bedsideHelpPressed",
-          "alertQueued",
-          "caregiverReviewing",
-          "patientAckWaiting",
-          "patientAcknowledged",
-          "escalationPending",
-          "familyNotified",
-          "homeCareWorkerDispatched",
+          "normalMonitoring",
+          "riskDetected",
+          "confirmPatient",
+          "notifyCareWorker",
           "emergencyEscalated",
+          "waitingResponder",
+          "responderArrived",
           "resolved"
         ].map((status) => (
           <span key={status} className={selectedCase.workflowState === status ? "is-active" : ""}>
