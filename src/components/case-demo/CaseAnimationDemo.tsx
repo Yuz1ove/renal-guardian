@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
   Eye,
   EyeOff,
   Package,
   Pause,
+  PhoneCall,
   Play,
   RotateCcw,
   Timer
@@ -26,6 +28,26 @@ import {
 import "./case-demo.css";
 
 const speedOptions = [0.5, 1, 1.5] as const;
+const quickJumpActions = [
+  {
+    stepId: "help-button",
+    label: "求助鍵",
+    detail: "建立 critical event",
+    icon: Package
+  },
+  {
+    stepId: "dispatch",
+    label: "119 升級線",
+    detail: "通知與到場處置",
+    icon: PhoneCall
+  },
+  {
+    stepId: "arrival-resolved",
+    label: "到場解除",
+    detail: "事件留痕 resolved",
+    icon: CheckCircle2
+  }
+] as const;
 
 function classNames(...tokens: Array<string | false | undefined>) {
   return tokens.filter(Boolean).join(" ");
@@ -40,6 +62,7 @@ export function CaseAnimationDemo() {
   const [showPackets, setShowPackets] = useState(true);
   const [sessionId, setSessionId] = useState(1);
   const [logs, setLogs] = useState<RuntimeLogEntry[]>(() => buildLogsThroughStep(0, 1));
+  const [quickJumpNote, setQuickJumpNote] = useState("");
   const lastStepIndex = caseScenario.length - 1;
   const currentStep = caseScenario[stepIndex];
   const runtimeStep = useMemo(() => deriveRuntimeStep(currentStep, progress), [currentStep, progress]);
@@ -89,7 +112,7 @@ export function CaseAnimationDemo() {
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [currentStep.durationMs, goToStep, isPlaying, lastStepIndex, speed, stepIndex]);
+  }, [currentStep.durationMs, goToStep, isPlaying, lastStepIndex, progress, speed, stepIndex]);
 
   function replay() {
     const nextSessionId = sessionId + 1;
@@ -98,6 +121,16 @@ export function CaseAnimationDemo() {
     setProgress(0);
     setLogs(buildLogsThroughStep(0, nextSessionId));
     setIsPlaying(true);
+    setQuickJumpNote("");
+  }
+
+  function jumpToScenarioStep(stepId: string, label: string) {
+    const nextIndex = caseScenario.findIndex((step) => step.id === stepId);
+    if (nextIndex < 0) return;
+    goToStep(nextIndex, { pause: true });
+    const targetStep = caseScenario[nextIndex];
+    const note = `${label} 已聚焦：${targetStep.title}。流程圖、封包與照護端狀態已同步。`;
+    setQuickJumpNote(note);
   }
 
   return (
@@ -161,6 +194,32 @@ export function CaseAnimationDemo() {
             {showPackets ? "隱藏封包" : "顯示封包"}
           </button>
         </div>
+      </section>
+
+      <section className="case-quick-jump-bar" aria-label="快速演示跳轉">
+        <div>
+          <span>快速演示</span>
+          <strong>直接跳到評審最需要看的事件節點</strong>
+        </div>
+        <div className="case-quick-jump-actions">
+          {quickJumpActions.map((action) => {
+            const Icon = action.icon;
+            const targetIndex = caseScenario.findIndex((step) => step.id === action.stepId);
+            return (
+              <button
+                key={action.stepId}
+                type="button"
+                className={targetIndex === stepIndex ? "is-active" : ""}
+                onClick={() => jumpToScenarioStep(action.stepId, action.label)}
+              >
+                <Icon size={15} />
+                <span>{action.label}</span>
+                <small>{action.detail}</small>
+              </button>
+            );
+          })}
+        </div>
+        {quickJumpNote ? <p>{quickJumpNote}</p> : null}
       </section>
 
       <div className="case-step-bar">
