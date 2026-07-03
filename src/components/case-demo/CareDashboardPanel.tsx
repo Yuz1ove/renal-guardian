@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clock4, Send, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock4, PhoneCall, Send, ShieldCheck } from "lucide-react";
 import {
   acknowledgementLabels,
   riskLevelLabels,
@@ -17,6 +17,10 @@ function getCountdownLabel(step: CaseStep, progress: number) {
   return `等待患者回應 ${secondsLeft}s`;
 }
 
+function isEmergencyEscalationActive(step: CaseStep) {
+  return step.risk.level === "critical" && step.careFlow.eventStatus === "active";
+}
+
 export function CareDashboardPanel({
   step,
   progress
@@ -26,6 +30,7 @@ export function CareDashboardPanel({
 }) {
   const countdownLabel = getCountdownLabel(step, progress);
   const ackLabel = acknowledgementLabels[step.wearable.acknowledgementStatus] ?? step.wearable.acknowledgementStatus;
+  const emergencyEscalationActive = isEmergencyEscalationActive(step);
 
   return (
     <section className={classNames("care-dashboard-panel", `risk-${step.risk.level}`)} aria-label="Care Dashboard Panel">
@@ -72,6 +77,15 @@ export function CareDashboardPanel({
               <span>{ackLabel}</span>
             </div>
           )}
+          {emergencyEscalationActive ? (
+            <div className="emergency-action-block" role="status">
+              <PhoneCall size={16} />
+              <div>
+                <strong>119 升級線已啟用</strong>
+                <span>Critical + 求助鍵 / 未回應安全確認 → 通知照護團隊並保留緊急處置紀錄。</span>
+              </div>
+            </div>
+          ) : null}
         </article>
 
         <CaseTimeline step={step} />
