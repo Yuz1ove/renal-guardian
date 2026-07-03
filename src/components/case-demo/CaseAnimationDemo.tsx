@@ -112,7 +112,7 @@ export function CaseAnimationDemo() {
 
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [currentStep.durationMs, goToStep, isPlaying, lastStepIndex, progress, speed, stepIndex]);
+  }, [currentStep.durationMs, goToStep, isPlaying, lastStepIndex, speed, stepIndex]);
 
   function replay() {
     const nextSessionId = sessionId + 1;
