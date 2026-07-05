@@ -100,12 +100,3 @@ npm run validate:submission
 ```bash
 npm run validate:runtime
 ```
-
-## 投稿檢查
-
-- 穿戴裝置畫面包含時間、心率、血壓與跌倒偵測。
-- 床邊檢測器包含活動狀態、求救警報與床邊通話。
-- 居服員辦公室看板包含多位被照顧者健康指數與低分派員提示。
-- 右側示範程式可調整血壓、心率、活動指數與跌倒偵測，3D 螢幕與辦公室分數會同步更新。
-- 設計圖與正式去背圖皆為 300dpi JPG 且小於 5MB。
-- 若平台或評審端可能出現中文檔名亂碼，優先上傳或提供 `submission/renal_guardian_submission.zip`。
